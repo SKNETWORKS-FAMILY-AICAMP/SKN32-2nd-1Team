@@ -1,200 +1,432 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
-from datetime import datetime
+"""Streamlit + OpenCV + InsightFace 얼굴 로그인 + 고객 이탈 예측 메인 앱입니다."""
 
-# ============================================
-# 페이지 설정
-# ============================================
-st.set_page_config(
-    page_title="통신사 이탈 분석 서비스",
-    page_icon="📡",
-    layout="wide",
-    initial_sidebar_state="expanded"
+# OpenCV는 얼굴 사각형 표시 이미지의 색상 변환에 사용합니다.
+import cv2
+
+# Streamlit은 웹 애플리케이션 화면을 구성하는 프레임워크입니다.
+import streamlit as st
+
+# DB 초기화와 아이디/암호 확인 함수를 가져옵니다.
+from app.db import init_db, verify_user_password
+
+# 얼굴 등록, 얼굴 검출 표시, 얼굴 2차 인증 함수를 가져옵니다.
+from app.face_auth import (
+    DEFAULT_SIMILARITY_THRESHOLD,
+    draw_face_box,
+    read_camera_image,
+    register_face,
+    verify_face_for_user,
 )
 
+# 고객 이탈 예측 함수를 가져옵니다.
+from app.churn_service import predict_churn
+
+# 세션 초기화, 로그아웃, 2차 인증 대기 초기화 함수를 가져옵니다.
+from app.ui import init_session_state, logout, reset_pending_face_auth
+
+
+# Streamlit 페이지 제목, 아이콘, 화면 폭을 설정합니다.
+st.set_page_config(page_title="Face Login + Churn Prediction", page_icon="🔐", layout="wide")
+
 # ============================================
-# 커스텀 CSS - 다크 네이비 + 코랄 포인트 컬러
+# 개발자용: 로그인 건너뛰기 스위치
+# 테스트할 때 매번 얼굴 등록/인증하기 귀찮을 때 True로 바꾸면 자동 로그인됩니다.
+# 실제 발표/제출 전에는 반드시 False로 바꿔야 합니다!
 # ============================================
-st.markdown("""
+DEV_SKIP_LOGIN = True
+
+# 앱 시작 시 세션 상태를 초기화합니다.
+init_session_state()
+
+if DEV_SKIP_LOGIN and not st.session_state.logged_in:
+    st.session_state.logged_in = True
+    st.session_state.user_id = "dev_user"
+    st.session_state.user_name = "테스트유저"
+    st.session_state.face_score = 0.99
+
+
+# MySQL DB와 사용자 테이블을 초기화합니다.
+# MySQL 서버가 실행 중이어야 하며 접속 정보는 환경 변수 또는 app/db.py 기본값을 사용합니다.
+if not DEV_SKIP_LOGIN:
+    try:
+        init_db()
+    except Exception as e:
+        st.error("MySQL DB 연결 또는 초기화에 실패했습니다.")
+        st.exception(e)
+        st.stop()
+
+# camera_input 위젯의 화면 크기를 기본보다 작게 보이도록 CSS를 적용합니다.
+# width:70%는 현재 camera_input 영역을 약 70% 크기로 줄여 표시합니다.
+st.markdown(
+    """
     <style>
-    .stApp {
-        background-color: #0F1729;
+    div[data-testid="stCameraInput"] {
+        width: 70% !important;
+        max-width: 520px !important;
     }
-    section[data-testid="stSidebar"] {
-        background-color: #131B2E;
+    div[data-testid="stCameraInput"] video {
+        width: 100% !important;
     }
-    .block-title {
-        font-size: 1.3rem;
-        font-weight: 700;
-        color: #F4F1EA;
-        border-bottom: 2px solid #FF6B5B;
-        padding-bottom: 8px;
-        margin-bottom: 16px;
-    }
-    .result-card {
-        background-color: #131B2E;
-        border: 1px solid #2A3550;
-        border-radius: 12px;
-        padding: 24px;
-        margin-top: 12px;
-    }
-    .risk-high {
-        border-left: 5px solid #FF6B5B;
-    }
-    .risk-mid {
-        border-left: 5px solid #E8B339;
-    }
-    .risk-low {
-        border-left: 5px solid #4CD6A8;
-    }
-    .model-note {
-        font-size: 0.8rem;
-        color: #8A93A8;
-        background-color: #1A2238;
-        padding: 8px 12px;
-        border-radius: 8px;
-        margin-bottom: 16px;
+    div[data-testid="stCameraInput"] img {
+        width: 100% !important;
     }
     </style>
-""", unsafe_allow_html=True)
-
-# ============================================
-# 더미 모델 (나중에 학습된 모델로 교체할 자리)
-# ============================================
-def predict_churn(features: dict) -> float:
-    """
-    임시 더미 예측 함수.
-    나중에 여기를 실제 학습된 모델(XGBoost 등) 예측 코드로 교체하면 됨.
-
-    예: model = joblib.load("model.pkl")
-        return model.predict_proba(X)[0][1]
-    """
-    rng = np.random.default_rng(seed=hash(str(features)) % (2**32))
-    base = rng.uniform(0.15, 0.9)
-    return float(base)
-
-
-# ============================================
-# 사이드바 - 메뉴 (이미지 참고, 디자인 톤만 변경)
-# ============================================
-st.sidebar.markdown("### 📡 통신사 이탈 분석 서비스")
-menu = st.sidebar.radio(
-    "메뉴 선택",
-    ["개인별 이탈 예측", "프로젝트 개요"],
-    label_visibility="collapsed"
+    """,
+    unsafe_allow_html=True,
 )
 
-st.sidebar.markdown("---")
-st.sidebar.caption(f"마지막 갱신: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+# 메인 제목을 출력합니다.
+st.title("🔐 얼굴 2차 인증 로그인 + 고객 이탈 예측 서비스")
 
-# ============================================
-# 메인 화면
-# ============================================
-st.title("📡 개인 고객 이탈 가능성 예측")
-st.markdown("고객 정보를 입력하면 모델이 이탈 확률을 계산합니다.")
+# 앱의 핵심 동작을 간단히 설명합니다.
+st.caption("회원 등록 → 아이디/암호 1차 확인 → 얼굴 2차 인증 → 고객 이탈 예측 기능 사용")
 
-st.markdown(
-    '<div class="model-note">⚙️ 현재는 더미 예측 결과입니다. 모델 연결 전 화면 구조 확인용입니다.</div>',
-    unsafe_allow_html=True
-)
 
-with st.expander("💰 소득 수준 가이드 확인하기"):
-    st.write("1~18 단계로 구분되며, 숫자가 높을수록 소득 수준이 높습니다.")
+# 사이드바에는 슬라이더 없이 로그인 상태만 표시합니다.
+with st.sidebar:
+    # 사이드바 제목을 출력합니다.
+    st.header("사용자 상태")
 
-with st.expander("🎓 학력 수준 가이드 확인하기"):
-    st.write("1(미취학) ~ 6(대학원) 단계로 구분됩니다.")
+    if DEV_SKIP_LOGIN:
+        st.warning("⚙️ 개발 모드: 로그인 자동 통과 중")
 
-st.markdown("---")
+    # 현재 로그인 상태라면 사용자 ID와 얼굴 유사도를 표시합니다.
+    if st.session_state.logged_in:
+        st.success(f"로그인 사용자: {st.session_state.user_id}")
+        if st.session_state.user_name:
+            st.info(f"이름: {st.session_state.user_name}")
+        st.info(f"얼굴 유사도: {st.session_state.face_score:.3f}")
 
-col1, col2, col3 = st.columns(3)
-
-# ---------- 컬럼 1: 인적 사항 ----------
-with col1:
-    st.markdown('<p class="block-title">인적 사항</p>', unsafe_allow_html=True)
-
-    p__age = st.number_input("나이", min_value=10, max_value=100, value=30, step=1)
-    p__school = st.slider("학력 (1~6)", min_value=1, max_value=6, value=3)
-    p__mar = st.selectbox("결혼 여부", ["미혼", "기혼", "이혼", "사별"])
-    p__job1 = st.radio("직업 유무", ["유 (1)", "무 (0)"], horizontal=True)
-    p__gender = st.radio("성별", ["남성", "여성"], horizontal=True)
-
-# ---------- 컬럼 2: 통신 이용 행태 ----------
-with col2:
-    st.markdown('<p class="block-title">통신 이용 행태</p>', unsafe_allow_html=True)
-
-    p__a02014 = st.selectbox("일반휴대폰 가입 통신사", ["SKT", "KT", "LGU+", "알뜰폰", "해당없음"])
-    p__a03008 = st.selectbox("스마트폰 가입 통신사", ["SKT", "KT", "LGU+", "알뜰폰", "해당없음"])
-    p__hhldsiz = st.number_input("가구원 수", min_value=1, max_value=10, value=3, step=1)
-
-# ---------- 컬럼 3: 경제 지표 ----------
-with col3:
-    st.markdown('<p class="block-title">경제 지표</p>', unsafe_allow_html=True)
-
-    p__income = st.slider("월평균 소득 수준 (1~18)", min_value=1, max_value=18, value=5)
-    base_year = st.selectbox("기준 연도", list(range(2025, 2014, -1)))
-    p__area = st.selectbox(
-        "거주 지역", ["서울", "경기", "인천", "강원", "충청", "전라", "경상", "제주"]
-    )
-
-st.markdown("---")
-
-predict_clicked = st.button("🔍 이탈 여부 예측하기", use_container_width=False)
-
-# ============================================
-# 예측 결과
-# ============================================
-if predict_clicked:
-    features = {
-        "age": p__age,
-        "school": p__school,
-        "mar": p__mar,
-        "job1": p__job1,
-        "gender": p__gender,
-        "a02014": p__a02014,
-        "a03008": p__a03008,
-        "hhldsiz": p__hhldsiz,
-        "income": p__income,
-        "area": p__area,
-        "year": base_year,
-    }
-
-    churn_prob = predict_churn(features)
-
-    if churn_prob >= 0.6:
-        risk_label = "⚠️ 이탈 위험"
-        risk_class = "risk-high"
-    elif churn_prob >= 0.4:
-        risk_label = "🟡 주의 관찰"
-        risk_class = "risk-mid"
+        # 로그아웃 버튼을 누르면 세션을 초기화합니다.
+        if st.button("로그아웃"):
+            logout()
+            st.rerun()
     else:
-        risk_label = "✅ 안정"
-        risk_class = "risk-low"
+        # 로그인 전에는 안내 메시지를 표시합니다.
+        st.warning("현재 로그인되지 않았습니다.")
 
-    res_col1, res_col2 = st.columns([1, 2])
 
-    with res_col1:
-        st.markdown(f"""
-        <div class="result-card {risk_class}">
-            <h4 style="margin:0; color:#8A93A8;">예측 결과</h4>
-            <h2 style="margin:8px 0; color:#F4F1EA;">{risk_label}</h2>
-        </div>
-        """, unsafe_allow_html=True)
+# 로그인 전에는 얼굴 등록과 로그인 탭을 제공합니다.
+if not st.session_state.logged_in:
+    # 얼굴 등록 탭과 로그인 탭을 생성합니다.
+    register_tab, login_tab = st.tabs(["1. 얼굴 등록", "2. 로그인"])
 
-    with res_col2:
-        st.markdown(f"""
-        <div class="result-card">
-            <h4 style="margin:0; color:#8A93A8;">이탈 확률</h4>
-            <h1 style="margin:8px 0; color:#FF6B5B;">{churn_prob*100:.2f}%</h1>
-        </div>
-        """, unsafe_allow_html=True)
-        st.progress(min(churn_prob, 1.0))
+    # 얼굴 등록 탭 화면을 구성합니다.
+    with register_tab:
+        # 등록 섹션 제목을 출력합니다.
+        st.subheader("회원 정보 + 얼굴 등록")
 
-    st.info(
-        f"💡 분석 결과: 이 고객은 현재 **{p__a03008}** 이용 중이며, "
-        f"가구원 수 **{p__hhldsiz}명**, 소득 수준 **{p__income}단계** 상태입니다. "
-        f"({base_year}년 기준 데이터)"
-    )
+        # 사용자 ID를 입력받습니다.
+        register_user_id = st.text_input("아이디", placeholder="예: user01", key="register_user_id")
 
+        # 비밀번호를 입력받습니다. type=password는 화면에 비밀번호를 숨겨 표시합니다.
+        register_password = st.text_input("암호", type="password", key="register_password")
+
+        # 사용자 이름을 입력받습니다.
+        register_name = st.text_input("이름", placeholder="예: 홍길동", key="register_name")
+
+        # camera_input으로 등록 얼굴을 촬영합니다. 파일 업로더는 사용하지 않습니다.
+        register_camera_file = st.camera_input("등록할 얼굴을 촬영하세요.", key="register_camera")
+
+        # 촬영 이미지가 있으면 OpenCV 이미지로 변환합니다.
+        register_image_bgr = read_camera_image(register_camera_file)
+
+        # 촬영된 얼굴에 사각형을 표시하여 얼굴 검출 여부를 확인시킵니다.
+        if register_image_bgr is not None:
+            annotated_bgr, face_found, face_message = draw_face_box(register_image_bgr)
+            annotated_rgb = cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB)
+            st.image(annotated_rgb, caption=face_message, width=420)
+            if not face_found:
+                st.warning(face_message)
+
+        # 등록 버튼을 누르면 사용자 정보와 얼굴 정보를 MySQL에 저장합니다.
+        if st.button("회원 및 얼굴 등록 실행", type="primary"):
+            # 이미지가 없으면 경고를 표시합니다.
+            if register_image_bgr is None:
+                st.warning("등록할 얼굴 이미지를 카메라로 촬영하세요.")
+            else:
+                try:
+                    # 회원 정보와 얼굴 임베딩을 등록합니다.
+                    ok, message = register_face(
+                        register_user_id,
+                        register_password,
+                        register_name,
+                        register_image_bgr,
+                    )
+
+                    # 등록 성공 시 성공 메시지를 표시합니다.
+                    if ok:
+                        st.success(message)
+                    else:
+                        # 등록 실패 시 오류 메시지를 표시합니다.
+                        st.error(message)
+                except Exception as e:
+                    st.error("회원/얼굴 등록 중 오류가 발생했습니다.")
+                    st.exception(e)
+
+    # 로그인 탭 화면을 구성합니다.
+    with login_tab:
+        # 로그인 섹션 제목을 출력합니다.
+        st.subheader("아이디/암호 로그인 후 얼굴 2차 인증")
+
+        # 로그인할 아이디를 입력받습니다.
+        login_user_id = st.text_input("아이디", key="login_user_id")
+
+        # 로그인할 암호를 입력받습니다.
+        login_password = st.text_input("암호", type="password", key="login_password")
+
+        # 1차 인증 버튼입니다.
+        if st.button("1차 아이디/암호 확인", type="primary"):
+            # 기존 2차 인증 대기 상태를 초기화합니다.
+            reset_pending_face_auth()
+
+            # 아이디와 암호 입력 여부를 먼저 확인합니다.
+            if not login_user_id.strip() or not login_password.strip():
+                st.warning("아이디와 암호를 모두 입력하세요.")
+            else:
+                try:
+                    # MySQL에 저장된 사용자 정보와 비밀번호 해시를 확인합니다.
+                    ok, user_name, message = verify_user_password(login_user_id.strip(), login_password)
+
+                    # 아이디/암호가 맞으면 2차 얼굴 인증 대기 상태로 전환합니다.
+                    if ok:
+                        st.session_state.pending_face_user_id = login_user_id.strip()
+                        st.session_state.pending_face_user_name = user_name
+                        st.success(message)
+                    else:
+                        st.error(message)
+                except Exception as e:
+                    st.error("아이디/암호 확인 중 오류가 발생했습니다.")
+                    st.exception(e)
+
+        # 1차 인증을 통과한 경우에만 얼굴 2차 인증 화면을 표시합니다.
+        if st.session_state.pending_face_user_id:
+            st.divider()
+            st.info(f"{st.session_state.pending_face_user_id} 계정의 얼굴 2차 인증을 진행하세요.")
+
+            # 로그인용 얼굴을 camera_input으로 촬영합니다. 파일 업로더는 사용하지 않습니다.
+            login_camera_file = st.camera_input("로그인할 얼굴을 촬영하세요.", key="login_camera")
+
+            # 촬영 이미지를 OpenCV BGR 이미지로 변환합니다.
+            login_image_bgr = read_camera_image(login_camera_file)
+
+            # 촬영된 얼굴에 사각형 테두리를 표시합니다.
+            if login_image_bgr is not None:
+                annotated_bgr, face_found, face_message = draw_face_box(login_image_bgr)
+                annotated_rgb = cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB)
+                st.image(annotated_rgb, caption=face_message, width=420)
+                if not face_found:
+                    st.warning(face_message)
+
+            # 2차 얼굴 인증 버튼입니다.
+            if st.button("2차 얼굴 인증 실행", type="primary"):
+                if login_image_bgr is None:
+                    st.warning("로그인할 얼굴 이미지를 카메라로 촬영하세요.")
+                else:
+                    try:
+                        # 1차 인증을 통과한 user_id의 등록 얼굴과 현재 촬영 얼굴을 비교합니다.
+                        ok, score, message = verify_face_for_user(
+                            st.session_state.pending_face_user_id,
+                            login_image_bgr,
+                            threshold=DEFAULT_SIMILARITY_THRESHOLD,
+                        )
+
+                        # 얼굴 인증 성공 시 최종 로그인 세션을 저장합니다.
+                        if ok:
+                            st.session_state.logged_in = True
+                            st.session_state.user_id = st.session_state.pending_face_user_id
+                            st.session_state.user_name = st.session_state.pending_face_user_name
+                            st.session_state.face_score = score
+                            reset_pending_face_auth()
+                            st.success(f"{message} 유사도: {score:.3f}")
+                            st.rerun()
+                        else:
+                            st.error(f"{message} 유사도: {score:.3f}")
+                    except Exception as e:
+                        st.error("얼굴 2차 인증 중 오류가 발생했습니다.")
+                        st.exception(e)
+
+# 로그인 후에는 고객 이탈 예측 서비스를 표시합니다.
 else:
-    st.caption("정보를 입력하고 **'이탈 여부 예측하기'** 버튼을 눌러주세요.")
+    import streamlit.components.v1 as components
+
+    ACCENT = "#FF6B5B"
+    ACCENT_MID = "#E8B339"
+    ACCENT_LOW = "#2E9E73"
+
+    # 입력 폼용 최소 CSS
+    st.markdown(f"""
+        <style>
+        .block-title {{
+            font-size: 1.2rem;
+            font-weight: 700;
+            border-bottom: 3px solid {ACCENT};
+            padding-bottom: 6px;
+            margin-bottom: 14px;
+        }}
+        </style>
+    """, unsafe_allow_html=True)
+
+    # 헤더 - 자유 디자인
+    components.html(f"""
+    <div style="
+        background: linear-gradient(135deg, {ACCENT} 0%, #131B2E 100%);
+        padding: 36px 40px;
+        border-radius: 18px;
+        font-family: 'Segoe UI', sans-serif;
+        color: white;
+        margin-bottom: 8px;
+    ">
+        <div style="display:flex; align-items:center; gap:14px;">
+            <div style="
+                width:52px; height:52px; border-radius:14px;
+                background: rgba(255,255,255,0.15);
+                display:flex; align-items:center; justify-content:center;
+                font-size:26px;
+            ">📡</div>
+            <div>
+                <h1 style="margin:0; font-size:1.8rem; font-weight:800;">
+                    개인 고객 이탈 가능성 예측
+                </h1>
+                <p style="margin:4px 0 0; opacity:0.85; font-size:0.95rem;">
+                    고객 정보를 입력하면 모델이 이탈 확률을 계산합니다
+                </p>
+            </div>
+        </div>
+        <div style="
+            margin-top:18px; display:inline-block;
+            background: rgba(0,0,0,0.25);
+            padding: 6px 14px; border-radius: 20px;
+            font-size: 0.78rem;
+        ">
+            👤 {st.session_state.user_name or st.session_state.user_id}님 환영합니다
+        </div>
+    </div>
+    """, height=170)
+
+    # 입력 폼을 사용하여 한 번에 고객 정보를 입력받습니다.
+    with st.form("churn_form"):
+        col1, col2, col3 = st.columns(3)
+
+        # 컬럼 1: 인적 사항 + 계약 정보
+        with col1:
+            st.markdown('<p class="block-title">인적 사항</p>', unsafe_allow_html=True)
+            gender = st.selectbox("성별", ["Male", "Female"])
+            senior = st.selectbox("고령 고객 여부", ["0", "1"])
+            partner = st.selectbox("배우자 여부", ["Yes", "No"])
+            dependents = st.selectbox("부양가족 여부", ["Yes", "No"])
+            tenure = st.number_input("가입 기간(개월)", min_value=0, max_value=100, value=12)
+
+        # 컬럼 2: 통신 서비스 이용 정보
+        with col2:
+            st.markdown('<p class="block-title">통신 이용 행태</p>', unsafe_allow_html=True)
+            phone = st.selectbox("전화 서비스", ["Yes", "No"])
+            multiple = st.selectbox("복수 회선", ["Yes", "No", "No phone service"])
+            internet = st.selectbox("인터넷 서비스", ["DSL", "Fiber optic", "No"])
+            security = st.selectbox("온라인 보안", ["Yes", "No", "No internet service"])
+            backup = st.selectbox("온라인 백업", ["Yes", "No", "No internet service"])
+            protection = st.selectbox("기기 보호", ["Yes", "No", "No internet service"])
+            tech = st.selectbox("기술 지원", ["Yes", "No", "No internet service"])
+            tv = st.selectbox("스트리밍 TV", ["Yes", "No", "No internet service"])
+            movies = st.selectbox("스트리밍 영화", ["Yes", "No", "No internet service"])
+
+        # 컬럼 3: 결제/요금 정보
+        with col3:
+            st.markdown('<p class="block-title">결제 및 요금</p>', unsafe_allow_html=True)
+            contract = st.selectbox("계약 유형", ["Month-to-month", "One year", "Two year"])
+            paperless = st.selectbox("전자 청구서 사용", ["Yes", "No"])
+            payment = st.selectbox(
+                "결제 방식",
+                [
+                    "Electronic check",
+                    "Mailed check",
+                    "Bank transfer (automatic)",
+                    "Credit card (automatic)",
+                ],
+            )
+            monthly = st.number_input("월 요금", min_value=0.0, max_value=300.0, value=75.0, step=1.0)
+            total = st.number_input("총 요금", min_value=0.0, max_value=20000.0, value=900.0, step=10.0)
+
+        st.markdown("---")
+        submitted = st.form_submit_button("🔍 이탈 여부 예측하기", type="primary")
+
+    # 사용자가 예측 버튼을 누르면 모델 입력값을 만들고 예측을 수행합니다.
+    if submitted:
+        # 모델 입력 컬럼명은 학습 때 사용한 컬럼명과 동일해야 합니다.
+        values = {
+            "gender": gender,
+            "SeniorCitizen": senior,
+            "Partner": partner,
+            "Dependents": dependents,
+            "tenure": tenure,
+            "PhoneService": phone,
+            "MultipleLines": multiple,
+            "InternetService": internet,
+            "OnlineSecurity": security,
+            "OnlineBackup": backup,
+            "DeviceProtection": protection,
+            "TechSupport": tech,
+            "StreamingTV": tv,
+            "StreamingMovies": movies,
+            "Contract": contract,
+            "PaperlessBilling": paperless,
+            "PaymentMethod": payment,
+            "MonthlyCharges": monthly,
+            "TotalCharges": total,
+        }
+
+        # 고객 이탈 예측 서비스를 호출합니다.
+        result = predict_churn(values)
+        churn_prob = result["churn_probability"]
+        pct = churn_prob * 100
+
+        if churn_prob >= 0.6:
+            risk_label, risk_emoji, risk_color = "이탈 위험", "⚠️", ACCENT
+        elif churn_prob >= 0.4:
+            risk_label, risk_emoji, risk_color = "주의 관찰", "🟡", ACCENT_MID
+        else:
+            risk_label, risk_emoji, risk_color = "안정", "✅", ACCENT_LOW
+
+        # 결과 카드 - 자유 디자인
+        components.html(f"""
+        <div style="font-family:'Segoe UI', sans-serif; display:flex; gap:16px; flex-wrap:wrap;">
+
+            <div style="
+                flex:1; min-width:220px;
+                background:#131B2E; border-radius:16px; padding:24px;
+                border-left:6px solid {risk_color};
+                color:#F4F1EA;
+            ">
+                <div style="opacity:0.6; font-size:0.85rem; margin-bottom:6px;">예측 결과</div>
+                <div style="font-size:1.6rem; font-weight:800;">{risk_emoji} {risk_label}</div>
+            </div>
+
+            <div style="
+                flex:2; min-width:280px;
+                background:#131B2E; border-radius:16px; padding:24px;
+                color:#F4F1EA;
+            ">
+                <div style="opacity:0.6; font-size:0.85rem; margin-bottom:6px;">이탈 확률</div>
+                <div style="font-size:2.4rem; font-weight:800; color:{risk_color};">
+                    {pct:.2f}%
+                </div>
+                <div style="
+                    margin-top:10px; height:10px; border-radius:6px;
+                    background:rgba(255,255,255,0.1); overflow:hidden;
+                ">
+                    <div style="
+                        width:{min(pct,100)}%; height:100%;
+                        background:{risk_color}; border-radius:6px;
+                        transition: width 0.4s ease;
+                    "></div>
+                </div>
+            </div>
+
+        </div>
+        """, height=160)
+
+        # 이탈 위험이 높으면 관리 전략을 안내합니다.
+        if result["prediction"] == 1:
+            st.warning("이 고객은 이탈 가능성이 높습니다. 장기 계약 할인, 기술 지원 강화, 요금제 재설계를 검토하세요.")
+        else:
+            st.success("이 고객은 현재 잔류 가능성이 높습니다. 만족도 유지와 추가 서비스 제안을 검토하세요.")
