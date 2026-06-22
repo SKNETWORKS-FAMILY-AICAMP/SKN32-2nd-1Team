@@ -106,7 +106,7 @@ with st.sidebar:
         st.header("메뉴 선택")
         menu = st.radio(
             "메뉴",
-            ["프로젝트 개요", "개인 이탈 예측", "통신사 이탈 예측"],
+            ["프로젝트 개요", "통신사 개인 이탈 예측", "통신사 이탈 예측"],
             label_visibility="collapsed",
         )
     else:
@@ -194,7 +194,7 @@ elif menu == "프로젝트 개요":
             "이탈(churn) 라벨은 연속된 두 조사 연도 사이에 가입 통신사가 바뀐 경우로 정의했습니다."
         )
 
-elif menu == "개인 이탈 예측":
+elif menu == "통신사 개인 이탈 예측":
     from view.tab_telecom_churn import render_tab_test_telecom
 
     render_tab_test_telecom()
