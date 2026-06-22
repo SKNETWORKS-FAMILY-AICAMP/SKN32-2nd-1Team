@@ -56,6 +56,16 @@ Signal-T는 얼굴 인식 기반 로그인과 머신러닝 모델을 결합한 S
 
 통신사의 고객 데이터와 머신러닝 모델을 활용해 이탈 가능성이 높은 고객을 선제적으로 탐지합니다. 이를 통해 불필요한 마케팅 비용을 줄이고, 고위험 고객에게 집중된 리텐션 전략을 제공하는 것을 목표로 합니다.
 
+## EDA
+### 타겟 변수 분포
+<img width="928" height="409" alt="image" src="https://github.com/user-attachments/assets/b869f701-efc5-4931-aa69-9cc416ff6554" />
+
+### 연도별 이탈 현황
+<img width="1189" height="489" alt="image" src="https://github.com/user-attachments/assets/acbb2d23-c363-4113-82f3-caf3c4639e49" />
+
+### 나이대 X 통신사별 이탈율
+<img width="1189" height="489" alt="image" src="https://github.com/user-attachments/assets/5c6c5ca9-a5ed-4767-8511-edb56b005ea9" />
+
 ## 주요 기능
 
 ### 얼굴 2차 인증 로그인
