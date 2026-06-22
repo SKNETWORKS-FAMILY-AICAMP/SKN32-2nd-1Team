@@ -1,14 +1,5 @@
 """Streamlit + OpenCV + InsightFace 얼굴 로그인 + 고객 이탈 예측 메인 앱입니다."""
 
-# OpenCV는 얼굴 사각형 표시 이미지의 색상 변환에 사용합니다.
-import cv2
-
-# hashlib은 더미 예측값을 입력값에 따라 일정하게 재현하기 위한 시드 생성에 사용합니다.
-import hashlib
-
-# numpy는 더미 예측값(랜덤 확률) 생성에 사용합니다.
-import numpy as np
-
 # pandas는 프로젝트 개요 화면의 컬럼 설명 표를 만드는 데 사용합니다.
 import pandas as pd
 
@@ -18,20 +9,16 @@ import streamlit as st
 # DB 초기화와 아이디/암호 확인 함수를 가져옵니다.
 from app.db import init_db, verify_user_password
 
-# 얼굴 등록, 얼굴 검출 표시, 얼굴 2차 인증 함수를 가져옵니다.
-from app.face_auth import (
-    DEFAULT_SIMILARITY_THRESHOLD,
-    draw_face_box,
-    read_camera_image,
-    register_face,
-    verify_face_for_user,
-)
+# "개인별 이탈 예측" 메뉴는 본인이 학습시킨 xgb_pipeline.joblib 모델을 사용합니다.
+# (통신사 이탈 예측 메뉴의 Pipeline 탭과 동일한 모델/변수 체계입니다.)
+from app.telecom_churn_service import predict_churn_pipeline
 
-# 고객 이탈 예측 함수를 가져옵니다.
-from app.churn_service import predict_churn
+# 세션 초기화, 로그아웃 함수를 가져옵니다.
+from app.ui import init_session_state, logout
 
-# 세션 초기화, 로그아웃, 2차 인증 대기 초기화 함수를 가져옵니다.
-from app.ui import init_session_state, logout, reset_pending_face_auth
+# 회원가입 / 로그인 화면을 가져옵니다.
+from view.register import render_register
+from view.login import render_login
 
 
 # Streamlit 페이지 제목, 아이콘, 화면 폭을 설정합니다.
@@ -48,7 +35,7 @@ DEV_SKIP_LOGIN = True
 init_session_state()
 
 if "auth_step" not in st.session_state:
-    st.session_state.auth_step = "register"
+    st.session_state.auth_step = "login"
 
 if DEV_SKIP_LOGIN and not st.session_state.logged_in:
     st.session_state.logged_in = True
@@ -130,144 +117,10 @@ with st.sidebar:
 
 # 로그인 전에는 얼굴 등록과 로그인 탭을 제공합니다.
 if not st.session_state.logged_in:
-    # 얼굴 등록 탭과 로그인 탭을 생성합니다.
-    # 얼굴 등록 화면
     if st.session_state.auth_step == "register":
-        # 등록 섹션 제목을 출력합니다.
-        st.subheader("회원 정보 + 얼굴 등록")
-
-        # 사용자 ID를 입력받습니다.
-        register_user_id = st.text_input("아이디", placeholder="예: user01", key="register_user_id")
-
-        # 비밀번호를 입력받습니다. type=password는 화면에 비밀번호를 숨겨 표시합니다.
-        register_password = st.text_input("암호", type="password", key="register_password")
-
-        # 사용자 이름을 입력받습니다.
-        register_name = st.text_input("이름", placeholder="예: 홍길동", key="register_name")
-
-        # camera_input으로 등록 얼굴을 촬영합니다. 파일 업로더는 사용하지 않습니다.
-        register_camera_file = st.camera_input("등록할 얼굴을 촬영하세요.", key="register_camera")
-
-        # 촬영 이미지가 있으면 OpenCV 이미지로 변환합니다.
-        register_image_bgr = read_camera_image(register_camera_file)
-
-        # 촬영된 얼굴에 사각형을 표시하여 얼굴 검출 여부를 확인시킵니다.
-        if register_image_bgr is not None:
-            annotated_bgr, face_found, face_message = draw_face_box(register_image_bgr)
-            annotated_rgb = cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB)
-            st.image(annotated_rgb, caption=face_message, width=420)
-            if not face_found:
-                st.warning(face_message)
-
-        # 등록 버튼을 누르면 사용자 정보와 얼굴 정보를 MySQL에 저장합니다.
-        if st.button("회원 및 얼굴 등록 실행", type="primary"):
-            # 이미지가 없으면 경고를 표시합니다.
-            if register_image_bgr is None:
-                st.warning("등록할 얼굴 이미지를 카메라로 촬영하세요.")
-            else:
-                try:
-                    # 회원 정보와 얼굴 임베딩을 등록합니다.
-                    ok, message = register_face(
-                        register_user_id,
-                        register_password,
-                        register_name,
-                        register_image_bgr,
-                    )
-
-                    # 등록 성공 시 성공 메시지를 표시합니다.
-                    if ok:
-                        st.success("회원 및 얼굴 등록이 완료되었습니다.")
-                        st.session_state.auth_step = "login"
-                        st.rerun()
-                    else:
-                        # 등록 실패 시 오류 메시지를 표시합니다.
-                        st.error(message)
-                except Exception as e:
-                    st.error("회원/얼굴 등록 중 오류가 발생했습니다.")
-                    st.exception(e)
-
-    # 로그인 화면
+        render_register()
     elif st.session_state.auth_step == "login":
-        # 로그인 섹션 제목을 출력합니다.
-        st.subheader("아이디/암호 로그인 후 얼굴 2차 인증")
-
-        # 로그인할 아이디를 입력받습니다.
-        login_user_id = st.text_input("아이디", key="login_user_id")
-
-        # 로그인할 암호를 입력받습니다.
-        login_password = st.text_input("암호", type="password", key="login_password")
-
-        # 1차 인증 버튼입니다.
-        if st.button("1차 아이디/암호 확인", type="primary"):
-            # 기존 2차 인증 대기 상태를 초기화합니다.
-            reset_pending_face_auth()
-
-            # 아이디와 암호 입력 여부를 먼저 확인합니다.
-            if not login_user_id.strip() or not login_password.strip():
-                st.warning("아이디와 암호를 모두 입력하세요.")
-            else:
-                try:
-                    # MySQL에 저장된 사용자 정보와 비밀번호 해시를 확인합니다.
-                    ok, user_name, message = verify_user_password(login_user_id.strip(), login_password)
-
-                    # 아이디/암호가 맞으면 2차 얼굴 인증 대기 상태로 전환합니다.
-                    if ok:
-                        st.session_state.pending_face_user_id = login_user_id.strip()
-                        st.session_state.pending_face_user_name = user_name
-                        st.success(message)
-                    else:
-                        st.error(message)
-                except Exception as e:
-                    st.error("아이디/암호 확인 중 오류가 발생했습니다.")
-                    st.exception(e)
-
-        # 1차 인증을 통과한 경우에만 얼굴 2차 인증 화면을 표시합니다.
-        if st.session_state.pending_face_user_id:
-            st.divider()
-            st.info(f"{st.session_state.pending_face_user_id} 계정의 얼굴 2차 인증을 진행하세요.")
-
-            # 로그인용 얼굴을 camera_input으로 촬영합니다. 파일 업로더는 사용하지 않습니다.
-            login_camera_file = st.camera_input("로그인할 얼굴을 촬영하세요.", key="login_camera")
-
-            # 촬영 이미지를 OpenCV BGR 이미지로 변환합니다.
-            login_image_bgr = read_camera_image(login_camera_file)
-
-            # 촬영된 얼굴에 사각형 테두리를 표시합니다.
-            if login_image_bgr is not None:
-                annotated_bgr, face_found, face_message = draw_face_box(login_image_bgr)
-                annotated_rgb = cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB)
-                st.image(annotated_rgb, caption=face_message, width=420)
-                if not face_found:
-                    st.warning(face_message)
-
-            # 2차 얼굴 인증 버튼입니다.
-            if st.button("2차 얼굴 인증 실행", type="primary"):
-                if login_image_bgr is None:
-                    st.warning("로그인할 얼굴 이미지를 카메라로 촬영하세요.")
-                else:
-                    try:
-                        # 1차 인증을 통과한 user_id의 등록 얼굴과 현재 촬영 얼굴을 비교합니다.
-                        ok, score, message = verify_face_for_user(
-                            st.session_state.pending_face_user_id,
-                            login_image_bgr,
-                            threshold=DEFAULT_SIMILARITY_THRESHOLD,
-                        )
-
-                        # 얼굴 인증 성공 시 최종 로그인 세션을 저장합니다.
-                        if ok:
-                            st.session_state.logged_in = True
-                            st.session_state.user_id = st.session_state.pending_face_user_id
-                            st.session_state.user_name = st.session_state.pending_face_user_name
-                            st.session_state.face_score = score
-                            st.session_state.auth_step = "register"
-                            reset_pending_face_auth()
-                            st.success(f"{message} 유사도: {score:.3f}")
-                            st.rerun()
-                        else:
-                            st.error(f"{message} 유사도: {score:.3f}")
-                    except Exception as e:
-                        st.error("얼굴 2차 인증 중 오류가 발생했습니다.")
-                        st.exception(e)
+        render_login()
 
 # 로그인 후에는 메뉴에 따라 화면을 표시합니다.
 elif menu == "프로젝트 개요":
@@ -407,27 +260,35 @@ elif menu == "개인별 이탈 예측":
     # 직접 확인한 값입니다. area만 코드북에 라벨이 없어 비워둔 상태입니다.
     # ============================================
 
+    # ============================================
+    # 실제 학습 모델(xgb_pipeline.joblib) 기준 변수
+    # app/telecom_churn_service.py의 PIPELINE_NUMERIC_FEATURES /
+    # PIPELINE_CATEGORICAL_FEATURES와 동일한 변수명을 사용합니다.
+    #
+    # ⚠️ income, household_size는 코드북 라벨 미확인 — extracted_data.csv 검증 결과
+    #    연속값이 아니라 코드값입니다. area·provider 5번도 라벨 미확인 상태입니다.
+    # ============================================
+
     AGE_LABELS = {
-        1: "10세 미만", 2: "10대", 3: "20대", 4: "30대",
+        1: "만 10세 미만", 2: "10대", 3: "20대", 4: "30대",
         5: "40대", 6: "50대", 7: "60대", 8: "70세 이상",
     }
     GENDER_LABELS = {1: "남성", 2: "여성"}
-    INCOME_LABELS = {
-        1: "소득 없음", 2: "50만원 미만", 3: "50~100만원", 4: "100~200만원",
-        5: "200~300만원", 6: "300~400만원", 7: "400~500만원", 8: "500만원 이상",
-    }
+    # income은 number_input으로 직접 입력받으므로 라벨 매핑이 필요 없습니다 (코드값 1~8).
     SCHOOL_LABELS = {
-        1: "미취학", 2: "초졸 이하", 3: "중졸 이하",
+        0: "무학", 1: "초등학교", 2: "중학교", 3: "중졸 이하",
         4: "고졸 이하", 5: "대졸 이하", 6: "대학원 재학 이상",
     }
-    AREA_LABELS = {}     # ⚠️ 코드북/유저가이드에 라벨 없음 — 문의 결과 확인되면 채워주세요 (코드 1~17)
-    MAR_LABELS = {1: "미혼", 2: "배우자 있음", 3: "사별", 4: "이혼"}
+    AREA_LABELS = {}     # ⚠️ 코드북에 라벨 없음 — 문의 결과 확인되면 채워주세요 (코드 1~17)
+    # household_size도 number_input으로 직접 입력받으므로 라벨 매핑이 필요 없습니다 (코드값 1~3).
+    MAR_LABELS = {1: "미혼", 2: "기혼", 3: "사별", 4: "이혼"}
     JOB_LABELS = {1: "예", 2: "아니오"}
-    CARRIER_LABELS = {1: "SKT", 2: "KT(구 KTF)", 3: "LG U+(구 LGT)", 4: "알뜰폰(MVNO) 등"}
-
-    # 신규: 태블릿 PC / 웨어러블 기기 보유 여부 (코드북 확인 완료)
-    TABLET_LABELS = {1: "있다", 2: "없다"}
-    WEARABLE_LABELS = {1: "있다", 2: "없다"}
+    PROVIDER_LABELS = {1: "SKT", 2: "KT", 3: "LG U+", 4: "알뜰폰", 5: "기타(라벨 확인 필요)"}
+    COST_PAYER_LABELS = {
+        1: "본인", 2: "회사가 전액 부담", 3: "회사가 일부 지원",
+        4: "가족이나 타인이 전액 부담", 5: "가족이나 타인이 일부 지원", 6: "기타",
+    }
+    BUNDLED_LABELS = {1: "예", 2: "아니오"}   # 실제 데이터 검증 결과 1/2만 존재 (0 없음)
 
     def code_options(value_range, label_map):
         """코드북 라벨이 있으면 한글 라벨만, 없으면 '코드 N'으로 보여줍니다."""
@@ -441,14 +302,13 @@ elif menu == "개인별 이탈 예측":
 
     age_opts = code_options(range(1, 9), AGE_LABELS)
     gender_opts = code_options(range(1, 3), GENDER_LABELS)
-    income_opts = code_options(range(1, 9), INCOME_LABELS)
-    school_opts = code_options(range(1, 7), SCHOOL_LABELS)
+    school_opts = code_options(range(0, 7), SCHOOL_LABELS)
     area_opts = code_options(range(1, 18), AREA_LABELS)
     mar_opts = code_options(range(1, 5), MAR_LABELS)
     job_opts = code_options(range(1, 3), JOB_LABELS)
-    carrier_opts = code_options(range(1, 5), CARRIER_LABELS)
-    tablet_opts = code_options(range(1, 3), TABLET_LABELS)
-    wearable_opts = code_options(range(1, 3), WEARABLE_LABELS)
+    provider_opts = code_options(range(1, 6), PROVIDER_LABELS)
+    cost_payer_opts = code_options(range(1, 7), COST_PAYER_LABELS)
+    bundled_opts = code_options(range(1, 3), BUNDLED_LABELS)
 
     # 입력 폼을 사용하여 한 번에 고객 정보를 입력받습니다.
     with st.form("churn_form"):
@@ -460,27 +320,38 @@ elif menu == "개인별 이탈 예측":
             age_kr = st.selectbox("나이 (age)", list(age_opts.keys()))
             gender_kr = st.selectbox("성별 (gender)", list(gender_opts.keys()))
             school_kr = st.selectbox("학력 (school)", list(school_opts.keys()))
-            mar_kr = st.selectbox("결혼 (mar)", list(mar_opts.keys()))
+            mar_kr = st.selectbox("결혼 여부 (marriage)", list(mar_opts.keys()))
 
         # 컬럼 2: 가구/소득/지역
         with col2:
             st.markdown('<p class="block-title">가구 및 소득</p>', unsafe_allow_html=True)
-            income_kr = st.selectbox("소득 (income)", list(income_opts.keys()))
-            area_kr = st.selectbox("지역 (area)", list(area_opts.keys()))
-            hhldsiz = st.number_input("가구원 수 (hhldsiz)", min_value=1, max_value=10, value=3, step=1)
-            job_kr = st.selectbox("직업 유무 (job1)", list(job_opts.keys()))
-
-        # 컬럼 3: 통신 서비스 + 기기 이용 현황
-        with col3:
-            st.markdown('<p class="block-title">통신 서비스</p>', unsafe_allow_html=True)
-            carrier_kr = st.selectbox("가입 통신사 (carrier)", list(carrier_opts.keys()))
-            usage_period = st.number_input(
-                "휴대폰 사용기간 (개월, usage_period)",
-                min_value=0, max_value=200, value=12, step=1,
-                help="2021년 이후 조사 방식 기준입니다. 코드북상 단위(개월/년) 추가 확인이 필요합니다.",
+            income_val = st.number_input(
+                "월평균 소득 (income)",
+                min_value=1, max_value=8, value=1, step=1,
+                help="실제 코드값(1~8)입니다. 코드북 라벨이 아직 확인되지 않았습니다.",
             )
-            tablet_kr = st.selectbox("태블릿 PC 보유 (tablet_owned)", list(tablet_opts.keys()))
-            wearable_kr = st.selectbox("웨어러블 기기 보유 (wearable_owned)", list(wearable_opts.keys()))
+            area_kr = st.selectbox("지역 (area)", list(area_opts.keys()))
+            household_size_val = st.number_input(
+                "가구원 수 (household_size)",
+                min_value=1, max_value=3, value=1, step=1,
+                help="실제 코드값(1~3)입니다. 코드북 라벨이 아직 확인되지 않았습니다.",
+            )
+            job_kr = st.selectbox("직업 유무 (job)", list(job_opts.keys()))
+
+        # 컬럼 3: 통신 서비스 + 비용
+        with col3:
+            st.markdown('<p class="block-title">통신 서비스 및 비용</p>', unsafe_allow_html=True)
+            provider_kr = st.selectbox("가입 통신사 (provider)", list(provider_opts.keys()))
+            monthly_total_cost = st.number_input(
+                "월평균 통신비 (monthly_total_cost, 원)",
+                min_value=0, max_value=500_000, value=70_000, step=1_000,
+            )
+            monthly_installment = st.number_input(
+                "월평균 기기 할부금 (monthly_installment, 원)",
+                min_value=0, max_value=300_000, value=20_000, step=1_000,
+            )
+            cost_payer_kr = st.selectbox("요금 부담자 (cost_payer)", list(cost_payer_opts.keys()))
+            bundled_kr = st.selectbox("결합상품 가입 여부 (is_mobile_bundled)", list(bundled_opts.keys()))
 
         st.markdown("---")
         submitted = st.form_submit_button("🔍 이탈 여부 예측하기", type="primary")
@@ -488,42 +359,32 @@ elif menu == "개인별 이탈 예측":
     # 사용자가 예측 버튼을 누르면 모델 입력값을 만들고 예측을 수행합니다.
     if submitted:
         # 화면에서 선택한 라벨을 다시 실제 코드(숫자)로 변환합니다.
-        # 모델 입력 컬럼명은 churn_panel_v3.csv와 동일하게 맞췄습니다.
+        # 변수명은 app/telecom_churn_service.py의 PIPELINE_FEATURE_COLS와 동일하게 맞췄습니다.
+        # 파생변수(installment_ratio 등)는 telecom_churn_service.py 안에서 자동 계산됩니다.
         values = {
+            "year": 24,
             "age": age_opts[age_kr],
             "gender": gender_opts[gender_kr],
-            "income": income_opts[income_kr],
+            "income": income_val,
             "school": school_opts[school_kr],
             "area": area_opts[area_kr],
-            "hhldsiz": hhldsiz,
-            "job1": job_opts[job_kr],
-            "mar": mar_opts[mar_kr],
-            "carrier": carrier_opts[carrier_kr],
-            "usage_period": usage_period,
-            "tablet_owned": tablet_opts[tablet_kr],
-            "wearable_owned": wearable_opts[wearable_kr],
-
+            "household_size": household_size_val,
+            "job": job_opts[job_kr],
+            "marriage": mar_opts[mar_kr],
+            "provider": provider_opts[provider_kr],
+            "monthly_total_cost": monthly_total_cost,
+            "monthly_installment": monthly_installment,
+            "cost_payer": cost_payer_opts[cost_payer_kr],
+            "is_mobile_bundled": bundled_opts[bundled_kr],
         }
 
-        # ============================================
-        # ⚠️ 더미 예측 함수 (모델 준비 전 임시용)
-        # 본인 데이터로 학습한 모델(models/churn_model.joblib)이 준비되면
-        # 아래 더미 블록을 지우고 원래의 predict_churn(values) 호출로 교체하세요.
-        #
-        # 교체 예시:
-        #   result = predict_churn(values)
-        # ============================================
-        seed_str = str(values)
-        seed_int = int(hashlib.md5(seed_str.encode()).hexdigest(), 16) % (2**32)
-        rng_local = np.random.default_rng(seed_int)
-        dummy_prob = float(rng_local.uniform(0.15, 0.9))
-
-        result = {
-            "prediction": int(dummy_prob >= 0.5),
-            "label": "이탈 위험" if dummy_prob >= 0.5 else "잔류 가능성 높음",
-            "churn_probability": dummy_prob,
-            "retention_probability": 1 - dummy_prob,
-        }
+        # 본인이 학습시킨 xgb_pipeline.joblib 모델로 실제 예측을 수행합니다.
+        try:
+            result = predict_churn_pipeline(values)
+        except Exception as e:
+            st.error("이탈 예측 중 오류가 발생했습니다.")
+            st.exception(e)
+            st.stop()
 
         churn_prob = result["churn_probability"]
         pct = churn_prob * 100
