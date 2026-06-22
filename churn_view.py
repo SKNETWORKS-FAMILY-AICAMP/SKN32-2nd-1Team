@@ -7,7 +7,7 @@ from app.telecom_churn_service import predict_churn, predict_churn_pipeline
 
 
 def render_tab_telecom():
-    st.markdown("""""")
+
     st.markdown("""
     <div style="
         background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
@@ -227,7 +227,7 @@ def render_tab_test_telecom():
         )
 
         income = st.number_input(
-            "소득 (income, 코드값 1~8)",
+            "소득 (income, 원)",
             min_value=1, max_value=8, step=1, value=1, key="test_income",
             help="실제 학습 데이터(extracted_data.csv) 검증 결과 1~8 코드값입니다. 코드북 라벨 미확인.",
         )
