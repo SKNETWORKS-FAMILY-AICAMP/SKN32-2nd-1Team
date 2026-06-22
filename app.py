@@ -3,6 +3,12 @@
 # OpenCV는 얼굴 사각형 표시 이미지의 색상 변환에 사용합니다.
 import cv2
 
+# hashlib은 더미 예측값을 입력값에 따라 일정하게 재현하기 위한 시드 생성에 사용합니다.
+import hashlib
+
+# numpy는 더미 예측값(랜덤 확률) 생성에 사용합니다.
+import numpy as np
+
 # pandas는 프로젝트 개요 화면의 컬럼 설명 표를 만드는 데 사용합니다.
 import pandas as pd
 
@@ -21,9 +27,8 @@ from app.face_auth import (
     verify_face_for_user,
 )
 
-# "개인별 이탈 예측" 메뉴는 본인이 학습시킨 xgb_pipeline.joblib 모델을 사용합니다.
-# (통신사 이탈 예측 메뉴의 Pipeline 탭과 동일한 모델/변수 체계입니다.)
-from app.telecom_churn_service import predict_churn_pipeline
+# 고객 이탈 예측 함수를 가져옵니다.
+from app.churn_service import predict_churn
 
 # 세션 초기화, 로그아웃, 2차 인증 대기 초기화 함수를 가져옵니다.
 from app.ui import init_session_state, logout, reset_pending_face_auth
@@ -288,13 +293,13 @@ elif menu == "프로젝트 개요":
     # 실제 churn_panel_v3.csv 기준 통계 (신규 변수 3개 통합 버전)
     stat_col1, stat_col2, stat_col3 = st.columns(3)
     with stat_col1:
-        st.metric("총 데이터 수", "147,915건")
+        st.metric("총 데이터 수", "86,130건")
     with stat_col2:
-        st.metric("분석 대상 기간", "2010년 ~ 2024년")
+        st.metric("분석 대상 기간", "2015년 ~ 2024년")
     with stat_col3:
-        st.metric("이탈 데이터 수", "43,910건")
+        st.metric("이탈 데이터 수", "31,403건")
 
-    st.caption("📌 extracted_data.csv 기준 실제 통계입니다. (이탈 43,910건 / 잔류 74,426건 / 이탈 여부 미확인 29,579건, 결측 제외 기준 이탈률 약 37.1%)")
+    st.caption("📌 churn_panel_v3.csv 기준 실제 통계입니다. (전체 이탈률 약 36.5%, usage_period·tablet_owned·wearable_owned 변수 통합)")
 
     st.markdown("---")
     st.markdown("### 2. 프로젝트 목표")
@@ -311,36 +316,29 @@ elif menu == "프로젝트 개요":
 
     with st.expander("📊 활용 데이터 컬럼 상세 보기"):
         column_info = [
-            ("id", "개인 통합 ID", "고유 식별 번호"),
-            ("year", "조사 연도", "10 ~ 24"),
+            ("pid", "개인 통합 ID", "고유 식별 번호"),
+            ("year", "조사 연도", "2015 ~ 2024"),
             ("age", "나이", "1=10세미만 ~ 8=70세이상 (8단계)"),
             ("gender", "성별", "1=남성, 2=여성"),
-            ("income", "월평균 소득", "1~8단계 코드값 (실제 데이터 검증: 연속값 아님, 코드북 라벨 확인 필요)"),
-            ("school", "최종 학력", "0=무학 ~ 6=대학원재학이상"),
+            ("income", "개인 월평균 소득", "1=소득없음 ~ 8=500만원이상 (8단계)"),
+            ("school", "최종 학력", "1=미취학 ~ 6=대학원재학이상 (6단계)"),
             ("area", "거주 지역", "코드값 1~17, 17개 시도 (라벨 미확인 — 문의 중)"),
-            ("household_size", "가구원 수", "코드값 1~3 (실제 데이터 검증: 연속값 아님)"),
-            ("job", "직업 유무", "1=예, 2=아니오"),
-            ("marriage", "결혼 여부", "1=미혼, 2=기혼, 3=사별, 4=이혼"),
-            ("provider", "가입 통신사", "1=SKT, 2=KT, 3=LGU+, 4=알뜰폰, 5=기타(라벨 미확인), 9999=모름/무응답"),
-            ("monthly_total_cost", "월평균 통신비", "연속값(원)"),
-            ("monthly_installment", "월평균 기기 할부금", "연속값(원)"),
-            ("cost_payer", "요금 부담자", "1=본인, 2~3=회사, 4~5=가족/타인, 6=기타"),
-            ("is_mobile_bundled", "결합상품 가입 여부", "1=예, 2=아니오 (실제 데이터 검증: 0 없음)"),
-            ("installment_ratio", "할부금 비율 (파생변수)", "monthly_installment / (monthly_total_cost+1)"),
-            ("cost_income_ratio", "통신비 대비 소득 (파생변수)", "monthly_total_cost / (income+1)"),
-            ("income_per_person", "1인당 소득 (파생변수)", "income / household_size"),
-            ("cost_per_person", "1인당 통신비 (파생변수)", "monthly_total_cost / household_size"),
-            ("married_large_family", "기혼+다인가구 여부 (파생변수)", "marriage==2 & household_size>=3"),
-            ("churn", "이탈 여부 (Target)", "유지(0), 이탈(1)"),
+            ("hhldsiz", "가구원 수", "코드값 1~3"),
+            ("job1", "직업 유무", "1=예, 2=아니오"),
+            ("mar", "결혼 여부", "1=미혼, 2=배우자있음, 3=사별, 4=이혼"),
+            ("carrier", "가입 통신사", "1=SKT, 2=KT, 3=LGU+, 4=알뜰폰(MVNO)"),
+            ("usage_period", "휴대폰 사용기간", "연속값 · 2021년 이후 조사 방식 기준 (단위 추가 확인 필요)"),
+            ("tablet_owned", "태블릿 PC 보유 여부", "1=있다, 2=없다 · 2019년 이전 데이터는 -1(미조사)"),
+            ("wearable_owned", "웨어러블 기기 보유 여부", "1=있다, 2=없다 · 2017년 이전 데이터는 -1(미조사)"),
+            ("churn", "이탈 여부 (Target)", "유지(0), 이탈(1) — 전체 이탈률 약 36.5%"),
         ]
         df_columns = pd.DataFrame(column_info, columns=["컬럼명", "설명", "비고"])
         st.table(df_columns)
 
         st.caption(
-            "📌 extracted_data.csv 실제 데이터 검증 기준입니다. "
-            "income·household_size는 연속값이 아니라 코드값이며, area·provider(5번 값)는 "
-            "정확한 라벨이 코드북에 없어 운영기관에 문의 중입니다. "
-            "installment_ratio 등 파생변수는 모델 예측 시 자동으로 계산됩니다."
+            "📌 한국미디어패널조사 코드북(P_codebook_v32) 기준 라벨입니다. "
+            "area(거주 지역)는 코드북·유저가이드에 라벨이 없어 운영기관에 문의 중입니다. "
+            "usage_period·tablet_owned·wearable_owned은 결측 연도가 있던 변수를 통합해 추가했습니다."
         )
 
 # 로그인 후, "개인별 이탈 예측" 메뉴일 때 고객 이탈 예측 서비스를 표시합니다.
@@ -402,35 +400,34 @@ elif menu == "개인별 이탈 예측":
     """, height=170)
 
     # ============================================
-    # 실제 학습 모델(xgb_pipeline.joblib) 기준 변수
-    # preprocess.ipynb의 rename_yeared_columns / make_provider_column /
-    # 파생변수 생성 로직과 동일한 변수명을 사용합니다.
+    # 실제 데이터(churn_panel_2015_2025.csv) 기준 변수
+    # 컬럼: age, gender, income, school, area, hhldsiz, job1, mar, carrier
+    #
+    # 아래 라벨은 한국미디어패널조사 코드북(P_codebook_v32.xlsx)에서
+    # 직접 확인한 값입니다. area만 코드북에 라벨이 없어 비워둔 상태입니다.
     # ============================================
 
     AGE_LABELS = {
-        1: "만 10세 미만", 2: "10대", 3: "20대", 4: "30대",
+        1: "10세 미만", 2: "10대", 3: "20대", 4: "30대",
         5: "40대", 6: "50대", 7: "60대", 8: "70세 이상",
     }
     GENDER_LABELS = {1: "남성", 2: "여성"}
-    # ⚠️ income은 코드북 라벨 미확인 — extracted_data.csv 검증 결과 1~8 코드값(연속값 아님)
-    INCOME_LABELS = {}
+    INCOME_LABELS = {
+        1: "소득 없음", 2: "50만원 미만", 3: "50~100만원", 4: "100~200만원",
+        5: "200~300만원", 6: "300~400만원", 7: "400~500만원", 8: "500만원 이상",
+    }
     SCHOOL_LABELS = {
-        0: "무학", 1: "초등학교", 2: "중학교", 3: "중졸 이하",
+        1: "미취학", 2: "초졸 이하", 3: "중졸 이하",
         4: "고졸 이하", 5: "대졸 이하", 6: "대학원 재학 이상",
     }
-    AREA_LABELS = {}     # ⚠️ 코드북에 라벨 없음 — 문의 결과 확인되면 채워주세요 (코드 1~17)
-    # ⚠️ household_size도 코드북 라벨 미확인 — extracted_data.csv 검증 결과 1~3 코드값(연속값 아님)
-    HOUSEHOLD_SIZE_LABELS = {}
-    MAR_LABELS = {1: "미혼", 2: "기혼", 3: "사별", 4: "이혼"}
+    AREA_LABELS = {}     # ⚠️ 코드북/유저가이드에 라벨 없음 — 문의 결과 확인되면 채워주세요 (코드 1~17)
+    MAR_LABELS = {1: "미혼", 2: "배우자 있음", 3: "사별", 4: "이혼"}
     JOB_LABELS = {1: "예", 2: "아니오"}
-    # provider: extracted_data.csv 실제 검증 결과 1~5, 9999 존재 (5는 라벨 미확인)
-    PROVIDER_LABELS = {1: "SKT", 2: "KT", 3: "LG U+", 4: "알뜰폰", 5: "기타(라벨 확인 필요)"}
-    COST_PAYER_LABELS = {
-        1: "본인", 2: "회사가 전액 부담", 3: "회사가 일부 지원",
-        4: "가족이나 타인이 전액 부담", 5: "가족이나 타인이 일부 지원", 6: "기타",
-    }
-    # is_mobile_bundled: extracted_data.csv 실제 검증 결과 1, 2만 존재 (0 없음)
-    BUNDLED_LABELS = {1: "예", 2: "아니오"}
+    CARRIER_LABELS = {1: "SKT", 2: "KT(구 KTF)", 3: "LG U+(구 LGT)", 4: "알뜰폰(MVNO) 등"}
+
+    # 신규: 태블릿 PC / 웨어러블 기기 보유 여부 (코드북 확인 완료)
+    TABLET_LABELS = {1: "있다", 2: "없다"}
+    WEARABLE_LABELS = {1: "있다", 2: "없다"}
 
     def code_options(value_range, label_map):
         """코드북 라벨이 있으면 한글 라벨만, 없으면 '코드 N'으로 보여줍니다."""
@@ -445,14 +442,13 @@ elif menu == "개인별 이탈 예측":
     age_opts = code_options(range(1, 9), AGE_LABELS)
     gender_opts = code_options(range(1, 3), GENDER_LABELS)
     income_opts = code_options(range(1, 9), INCOME_LABELS)
-    school_opts = code_options(range(0, 7), SCHOOL_LABELS)
+    school_opts = code_options(range(1, 7), SCHOOL_LABELS)
     area_opts = code_options(range(1, 18), AREA_LABELS)
-    household_size_opts = code_options(range(1, 4), HOUSEHOLD_SIZE_LABELS)
     mar_opts = code_options(range(1, 5), MAR_LABELS)
     job_opts = code_options(range(1, 3), JOB_LABELS)
-    provider_opts = code_options(range(1, 6), PROVIDER_LABELS)
-    cost_payer_opts = code_options(range(1, 7), COST_PAYER_LABELS)
-    bundled_opts = code_options(range(1, 3), BUNDLED_LABELS)
+    carrier_opts = code_options(range(1, 5), CARRIER_LABELS)
+    tablet_opts = code_options(range(1, 3), TABLET_LABELS)
+    wearable_opts = code_options(range(1, 3), WEARABLE_LABELS)
 
     # 입력 폼을 사용하여 한 번에 고객 정보를 입력받습니다.
     with st.form("churn_form"):
@@ -464,30 +460,27 @@ elif menu == "개인별 이탈 예측":
             age_kr = st.selectbox("나이 (age)", list(age_opts.keys()))
             gender_kr = st.selectbox("성별 (gender)", list(gender_opts.keys()))
             school_kr = st.selectbox("학력 (school)", list(school_opts.keys()))
-            mar_kr = st.selectbox("결혼 여부 (marriage)", list(mar_opts.keys()))
+            mar_kr = st.selectbox("결혼 (mar)", list(mar_opts.keys()))
 
         # 컬럼 2: 가구/소득/지역
         with col2:
             st.markdown('<p class="block-title">가구 및 소득</p>', unsafe_allow_html=True)
-            income_kr = st.selectbox("월평균 소득 (income, 코드값)", list(income_opts.keys()))
+            income_kr = st.selectbox("소득 (income)", list(income_opts.keys()))
             area_kr = st.selectbox("지역 (area)", list(area_opts.keys()))
-            household_size_kr = st.selectbox("가구원 수 (household_size, 코드값)", list(household_size_opts.keys()))
-            job_kr = st.selectbox("직업 유무 (job)", list(job_opts.keys()))
+            hhldsiz = st.number_input("가구원 수 (hhldsiz)", min_value=1, max_value=10, value=3, step=1)
+            job_kr = st.selectbox("직업 유무 (job1)", list(job_opts.keys()))
 
-        # 컬럼 3: 통신 서비스 + 비용
+        # 컬럼 3: 통신 서비스 + 기기 이용 현황
         with col3:
-            st.markdown('<p class="block-title">통신 서비스 및 비용</p>', unsafe_allow_html=True)
-            provider_kr = st.selectbox("가입 통신사 (provider)", list(provider_opts.keys()))
-            monthly_total_cost = st.number_input(
-                "월평균 통신비 (monthly_total_cost, 원)",
-                min_value=0, max_value=500_000, value=70_000, step=1_000,
+            st.markdown('<p class="block-title">통신 서비스</p>', unsafe_allow_html=True)
+            carrier_kr = st.selectbox("가입 통신사 (carrier)", list(carrier_opts.keys()))
+            usage_period = st.number_input(
+                "휴대폰 사용기간 (개월, usage_period)",
+                min_value=0, max_value=200, value=12, step=1,
+                help="2021년 이후 조사 방식 기준입니다. 코드북상 단위(개월/년) 추가 확인이 필요합니다.",
             )
-            monthly_installment = st.number_input(
-                "월평균 기기 할부금 (monthly_installment, 원)",
-                min_value=0, max_value=300_000, value=20_000, step=1_000,
-            )
-            cost_payer_kr = st.selectbox("요금 부담자 (cost_payer)", list(cost_payer_opts.keys()))
-            bundled_kr = st.selectbox("결합상품 가입 여부 (is_mobile_bundled)", list(bundled_opts.keys()))
+            tablet_kr = st.selectbox("태블릿 PC 보유 (tablet_owned)", list(tablet_opts.keys()))
+            wearable_kr = st.selectbox("웨어러블 기기 보유 (wearable_owned)", list(wearable_opts.keys()))
 
         st.markdown("---")
         submitted = st.form_submit_button("🔍 이탈 여부 예측하기", type="primary")
@@ -495,32 +488,42 @@ elif menu == "개인별 이탈 예측":
     # 사용자가 예측 버튼을 누르면 모델 입력값을 만들고 예측을 수행합니다.
     if submitted:
         # 화면에서 선택한 라벨을 다시 실제 코드(숫자)로 변환합니다.
-        # 변수명은 preprocess.ipynb의 rename_yeared_columns()와 동일하게 맞췄습니다.
-        # 파생변수(installment_ratio 등)는 telecom_churn_service.py 안에서 자동 계산됩니다.
+        # 모델 입력 컬럼명은 churn_panel_v3.csv와 동일하게 맞췄습니다.
         values = {
-            "year": 24,
             "age": age_opts[age_kr],
             "gender": gender_opts[gender_kr],
             "income": income_opts[income_kr],
             "school": school_opts[school_kr],
             "area": area_opts[area_kr],
-            "household_size": household_size_opts[household_size_kr],
-            "job": job_opts[job_kr],
-            "marriage": mar_opts[mar_kr],
-            "provider": provider_opts[provider_kr],
-            "monthly_total_cost": monthly_total_cost,
-            "monthly_installment": monthly_installment,
-            "cost_payer": cost_payer_opts[cost_payer_kr],
-            "is_mobile_bundled": bundled_opts[bundled_kr],
+            "hhldsiz": hhldsiz,
+            "job1": job_opts[job_kr],
+            "mar": mar_opts[mar_kr],
+            "carrier": carrier_opts[carrier_kr],
+            "usage_period": usage_period,
+            "tablet_owned": tablet_opts[tablet_kr],
+            "wearable_owned": wearable_opts[wearable_kr],
+
         }
 
-        # 본인이 학습시킨 xgb_pipeline.joblib 모델로 실제 예측을 수행합니다.
-        try:
-            result = predict_churn_pipeline(values)
-        except Exception as e:
-            st.error("이탈 예측 중 오류가 발생했습니다.")
-            st.exception(e)
-            st.stop()
+        # ============================================
+        # ⚠️ 더미 예측 함수 (모델 준비 전 임시용)
+        # 본인 데이터로 학습한 모델(models/churn_model.joblib)이 준비되면
+        # 아래 더미 블록을 지우고 원래의 predict_churn(values) 호출로 교체하세요.
+        #
+        # 교체 예시:
+        #   result = predict_churn(values)
+        # ============================================
+        seed_str = str(values)
+        seed_int = int(hashlib.md5(seed_str.encode()).hexdigest(), 16) % (2**32)
+        rng_local = np.random.default_rng(seed_int)
+        dummy_prob = float(rng_local.uniform(0.15, 0.9))
+
+        result = {
+            "prediction": int(dummy_prob >= 0.5),
+            "label": "이탈 위험" if dummy_prob >= 0.5 else "잔류 가능성 높음",
+            "churn_probability": dummy_prob,
+            "retention_probability": 1 - dummy_prob,
+        }
 
         churn_prob = result["churn_probability"]
         pct = churn_prob * 100
@@ -575,7 +578,6 @@ elif menu == "개인별 이탈 예측":
             st.warning("이 고객은 이탈 가능성이 높습니다. 장기 계약 할인, 기술 지원 강화, 요금제 재설계를 검토하세요.")
         else:
             st.success("이 고객은 현재 잔류 가능성이 높습니다. 만족도 유지와 추가 서비스 제안을 검토하세요.")
-
 elif menu == "통신사 이탈 예측":
     from view.tab_telecom_churn import render_tab_telecom, render_tab_test_telecom
 
