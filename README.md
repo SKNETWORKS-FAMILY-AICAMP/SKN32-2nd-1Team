@@ -66,6 +66,9 @@ Signal-T는 얼굴 인식 기반 로그인과 머신러닝 모델을 결합한 S
 ### 나이대 X 통신사별 이탈율
 <img width="1189" height="489" alt="image" src="https://github.com/user-attachments/assets/5c6c5ca9-a5ed-4767-8511-edb56b005ea9" />
 
+### 모바일 결합 여부별 이탈율
+<img width="990" height="409" alt="image" src="https://github.com/user-attachments/assets/7f8c5776-f9b8-409a-9d81-7e030d070ee7" />
+
 ## 주요 기능
 
 ### 얼굴 2차 인증 로그인
