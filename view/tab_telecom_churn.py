@@ -266,7 +266,7 @@ def render_tab_test_telecom():
         </style>
     """, unsafe_allow_html=True)
 
-    _render_header("통신사 개인 이탈 예측", "고객 정보를 입력하면 통신사 이탈 가능성을 예측합니다")
+    _render_header("개인 이탈 예측", "고객 정보를 입력하면 통신사 이탈 가능성을 예측합니다")
 
     col1, col2, col3 = st.columns(3)
 

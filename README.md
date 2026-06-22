@@ -10,12 +10,10 @@ Signal-T는 얼굴 인식 기반 로그인과 머신러닝 모델을 결합한 S
 - [프로젝트 개요](#프로젝트-개요)
 - [주요 기능](#주요-기능)
 - [기술 스택](#기술-스택)
-- [제출물](#제출물)
 - [데이터 전처리 결과서](#데이터-전처리-결과서)
 - [학습된 인공지능 모델](#학습된-인공지능-모델)
 - [프로젝트 구조](#프로젝트-구조)
 - [설치 및 실행](#설치-및-실행)
-- [개발 모드](#개발-모드)
 - [사용 방법](#사용-방법)
 - [모델 교체 방법](#모델-교체-방법)
 - [향후 개선 계획](#향후-개선-계획)
@@ -36,25 +34,52 @@ Signal-T는 얼굴 인식 기반 로그인과 머신러닝 모델을 결합한 S
 고객이 이탈하기 전에 보내는 **시그널**을 데이터로 포착해 내겠다는 의미를 담았습니다. 여기서 `T`는 `Telecom`을 의미합니다.
 
 ### 프로젝트 배경
-
 #### 알뜰폰(MVNO)의 공세와 통신 시장 변화
 
-- **합리적 소비 트렌드 확산:** 5G 서비스에 대한 피로감과 자급제 단말기 보급 활성화로 인해 가성비를 중시하는 고객층을 중심으로 알뜰폰(MVNO) 이탈률이 증가하고 있습니다.
-- **가입자 사수 경쟁 심화:** 번호이동 시장이 과열되면서 통신 3사(SKT, KT, LGU+) 간 기존 가입자 방어와 신규 가입자 유치 경쟁이 치열해지고 있습니다.
-
-#### 통신사 마케팅 비용 지출의 딜레마
-
-- **출혈 경쟁으로 인한 실적 압박:** 가입자 유지를 위한 마케팅비 지출은 불가피하지만, 이는 기업의 영업이익 감소로 이어질 수 있습니다.
-- **비효율적 자원 배분:** 모든 고객에게 동일한 혜택을 제공하는 방식은 마케팅 비용 대비 효과를 낮출 수 있습니다.
-
-#### 데이터 기반 타겟 리텐션의 필요성
-
-- **비용 절감 효과:** 신규 고객 유치 비용은 기존 고객 유지 비용보다 높기 때문에, 이탈 가능성이 높은 고객을 조기에 선별하는 것이 중요합니다.
-- **이탈 시그널 포착:** 고객은 이탈 전 결합 상품 해지, 요금 부담률 변화, 서비스 이용량 급감 같은 데이터상 징후를 남길 수 있습니다.
 
 ### 프로젝트 목표
 
 통신사의 고객 데이터와 머신러닝 모델을 활용해 이탈 가능성이 높은 고객을 선제적으로 탐지합니다. 이를 통해 불필요한 마케팅 비용을 줄이고, 고위험 고객에게 집중된 리텐션 전략을 제공하는 것을 목표로 합니다.
+
+## 프로젝트 구조
+
+```text
+SKN32-2nd-1Team/
+├── app.py                         # 메인 실행 파일 (로그인 + 이탈 예측 화면 진입점)
+├── tab_telecom_churn.py                  # 이탈 예측 UI 뷰 컴포넌트
+├── config.toml                    # Streamlit 테마 설정
+├── requirements.txt               # Python 의존성 목록
+├── README.md
+├── app/                           # 핵심 비즈니스 로직 패키지
+│   ├── __init__.py
+│   ├── db.py                      # MySQL 연결 및 회원 정보 관리
+│   ├── face_auth.py               # 얼굴 검출, 등록, 로그인 인증 (InsightFace)
+│   ├── churn_service.py           # 이탈 예측 모델 로딩 및 추론
+│   ├── telecom_churn_service.py   # 통신 고객 이탈 예측 서비스 로직
+│   └── ui.py                      # 로그인 세션 및 UI 상태 관리
+├── view/                          # 화면 단위 뷰 모듈
+│   ├── login.py                   # 로그인 화면
+│   ├── register.py                # 회원 등록 화면
+│   └── tab_telecom_churn.py       # 이탈 예측 탭 화면
+├── data/                          # 데이터 및 분석 노트북
+│   ├── data.md                    # 데이터셋 설명 문서
+│   ├── churn_modeling.ipynb       # 이탈 예측 모델링 노트북
+│   ├── dataset.ipynb              # 데이터셋 탐색 노트북
+│   ├── dataset_setting_model.ipynb # 데이터셋 구성 및 모델 셋업
+│   ├── model.ipynb                # 모델 실험 노트북
+│   └── preprocess.ipynb           # 전처리 노트북
+├── models/                        # 학습된 모델 아티팩트
+│   ├── churn_model.joblib         # 베이스 LightGBM 모델
+│   ├── lgb_churn_model.joblib     # LightGBM 단일 모델
+│   ├── xgb_churn_model.joblib     # XGBoost 단일 모델
+│   ├── xgb_model.joblib           # XGBoost 보조 모델
+│   ├── xgb_pipeline.joblib        # XGBoost + 전처리 파이프라인
+│   ├── gb_churn_model.joblib      # Gradient Boosting 모델
+│   ├── rf_churn_model.joblib      # Random Forest 모델
+│   ├── lr_churn_model.joblib      # Logistic Regression 베이스라인
+│   └── voting_churn_model.joblib  # 보팅 앙상블 모델
+└── registered_faces/              # 등록된 얼굴 이미지 저장 폴더 (자동 생성)
+```
 
 ## EDA
 ### 타겟 변수 분포
@@ -80,9 +105,9 @@ Signal-T는 얼굴 인식 기반 로그인과 머신러닝 모델을 결합한 S
 
 ### 머신러닝 기반 이탈 예측
 
-- **예측 모델:** `models/churn_model.joblib`, `models/xgb_model.joblib`, `models/xgb_pipeline.joblib`
-- **예측 결과:** 이탈 확률, 위험도 등급, 고객 대응 가이드
-- **입력 항목:** 인적 사항, 통신 이용 행태, 결제 및 요금 정보
+- **예측 모델:** 
+- **예측 결과:** 
+- **입력 항목:** 
 
 ### 결과 시각화
 
@@ -127,11 +152,6 @@ Signal-T는 얼굴 인식 기반 로그인과 머신러닝 모델을 결합한 S
 
 ### 실험 요약
 
-- **베이스라인(001)** 대비, 전체 패널 데이터와 파생 변수를 활용한 **실험 004**에서 ROC-AUC가 0.6520 → 0.6715로 향상되었습니다.
-- Optuna 하이퍼파라미터 튜닝(006)과 결측치 처리 방식(007~008) 실험을 통해 안정적인 성능 구간을 확인했습니다.
-- XGBoost 단일 모델(010)과 learning_rate 조정(011), 신규 변수 추가(012)는 유의미한 개선을 보이지 않았습니다.
-- SMOTE 오버샘플링(013)과 3모델 앙상블(014)은 오히려 성능이 하락했습니다.
-- 최종적으로 **LightGBM + XGBoost 앙상블(015)** 구성을 채택해 ROC-AUC 0.6715를 달성했습니다.
 
 ## 학습된 인공지능 모델
 
@@ -141,9 +161,9 @@ Signal-T는 얼굴 인식 기반 로그인과 머신러닝 모델을 결합한 S
 
 | 구분 | 파일명 | 알고리즘 | 용도 |
 | :--- | :--- | :--- | :--- |
-| 베이스 모델 | `churn_model.joblib` | LightGBM | 단일 LightGBM 기반 이탈 예측 모델 |
-| 보조 모델 | `xgb_model.joblib` | XGBoost | 앙상블 구성용 XGBoost 단일 모델 |
-| 파이프라인 | `xgb_pipeline.joblib` | XGBoost + 전처리 파이프라인 | 전처리 단계가 포함된 추론용 파이프라인 |
+| 베이스 모델 | '' |  |  |
+| 보조 모델 | `` |  |  |
+| 파이프라인 | `` |     |  |
 
 ### 카테고리별 분류
 
@@ -161,74 +181,10 @@ Signal-T는 얼굴 인식 기반 로그인과 머신러닝 모델을 결합한 S
 
 #### 2. 전처리 파이프라인 모델 (Pipeline Model)
 
-- **`xgb_pipeline.joblib`**
-  - Scikit-learn `Pipeline` 객체로 전처리 + XGBoost 학습을 통합
-  - 원시 입력 데이터를 그대로 받아 추론할 수 있도록 구성
-  - 서비스 단계에서 별도 전처리 코드 없이 사용 가능
 
 #### 3. 최종 채택 모델 (Final Ensemble)
 
-- **LightGBM + XGBoost 앙상블**
-  - 실험 015에서 ROC-AUC **0.6715 ★** 달성
-  - `churn_model.joblib` (LightGBM) + `xgb_model.joblib` (XGBoost) 조합
-  - 서비스(`app/churn_service.py`, `app/telecom_churn_service.py`)에서 로딩되어 사용
 
-### 모델 사용 방법
-
-```python
-import joblib
-
-# 단일 LightGBM 모델 로딩
-churn_model = joblib.load("models/churn_model.joblib")
-
-# 전처리가 포함된 XGBoost 파이프라인 로딩
-xgb_pipeline = joblib.load("models/xgb_pipeline.joblib")
-
-# 앙상블 추론 예시
-proba_lgb = churn_model.predict_proba(X)[:, 1]
-proba_xgb = xgb_pipeline.predict_proba(X_raw)[:, 1]
-proba_final = (proba_lgb + proba_xgb) / 2
-```
-
-## 프로젝트 구조
-
-```text
-SKN32-2nd-1Team/
-├── app.py                         # 메인 실행 파일 (로그인 + 이탈 예측 화면 진입점)
-├── tab_telecom_churn.py                  # 이탈 예측 UI 뷰 컴포넌트
-├── config.toml                    # Streamlit 테마 설정
-├── requirements.txt               # Python 의존성 목록
-├── README.md
-├── app/                           # 핵심 비즈니스 로직 패키지
-│   ├── __init__.py
-│   ├── db.py                      # MySQL 연결 및 회원 정보 관리
-│   ├── face_auth.py               # 얼굴 검출, 등록, 로그인 인증 (InsightFace)
-│   ├── churn_service.py           # 이탈 예측 모델 로딩 및 추론
-│   ├── telecom_churn_service.py   # 통신 고객 이탈 예측 서비스 로직
-│   └── ui.py                      # 로그인 세션 및 UI 상태 관리
-├── view/                          # 화면 단위 뷰 모듈
-│   ├── login.py                   # 로그인 화면
-│   ├── register.py                # 회원 등록 화면
-│   └── tab_telecom_churn.py       # 이탈 예측 탭 화면
-├── data/                          # 데이터 및 분석 노트북
-│   ├── data.md                    # 데이터셋 설명 문서
-│   ├── churn_modeling.ipynb       # 이탈 예측 모델링 노트북
-│   ├── dataset.ipynb              # 데이터셋 탐색 노트북
-│   ├── dataset_setting_model.ipynb # 데이터셋 구성 및 모델 셋업
-│   ├── model.ipynb                # 모델 실험 노트북
-│   └── preprocess.ipynb           # 전처리 노트북
-├── models/                        # 학습된 모델 아티팩트
-│   ├── churn_model.joblib         # 베이스 LightGBM 모델
-│   ├── lgb_churn_model.joblib     # LightGBM 단일 모델
-│   ├── xgb_churn_model.joblib     # XGBoost 단일 모델
-│   ├── xgb_model.joblib           # XGBoost 보조 모델
-│   ├── xgb_pipeline.joblib        # XGBoost + 전처리 파이프라인
-│   ├── gb_churn_model.joblib      # Gradient Boosting 모델
-│   ├── rf_churn_model.joblib      # Random Forest 모델
-│   ├── lr_churn_model.joblib      # Logistic Regression 베이스라인
-│   └── voting_churn_model.joblib  # 보팅 앙상블 모델
-└── registered_faces/              # 등록된 얼굴 이미지 저장 폴더 (자동 생성)
-```
 
 ## 설치 및 실행
 
