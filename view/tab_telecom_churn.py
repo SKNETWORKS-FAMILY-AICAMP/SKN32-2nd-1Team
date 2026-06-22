@@ -270,12 +270,14 @@ def render_tab_test_telecom():
 
         provider = st.selectbox(
             "이동통신사 (provider)",
-            options=[1, 2, 3, 4, 9999],
+            # 실제 학습 데이터(extracted_data.csv) 검증 결과 1~5, 9999 존재. 5는 라벨 미확인.
+            options=[1, 2, 3, 4, 5, 9999],
             format_func=lambda x: {
                 1: "SKT",
                 2: "KT",
                 3: "LG U+",
                 4: "알뜰폰",
+                5: "기타(라벨 확인 필요)",
                 9999: "모름/무응답",
             }[x],
             key="test_provider",
@@ -301,8 +303,8 @@ def render_tab_test_telecom():
 
         is_mobile_bundled = st.selectbox(
             "결합할인 여부 (is_mobile_bundled)",
-            options=[0, 1],
-            format_func=lambda x: {0: "아니오", 1: "예"}[x],
+            options=[1, 2],  # 실제 학습 데이터(extracted_data.csv) 검증 결과 1/2만 존재 (0 없음)
+            format_func=lambda x: {1: "예", 2: "아니오"}[x],
             key="test_bundled",
         )
 
