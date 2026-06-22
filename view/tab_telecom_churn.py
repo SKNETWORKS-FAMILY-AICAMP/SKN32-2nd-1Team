@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -12,10 +13,35 @@ from app.telecom_churn_service import (
 import io
 import os
 import requests
-OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "localhost")
 
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "localhost")
 OLLAMA_URL = f"http://{OLLAMA_HOST}:11434/api/generate"
 OLLAMA_MODEL = "exaone3.5:2.4b"
+
+# ============================================================
+# 디자인 색상 (app.py와 동일한 톤으로 통일)
+# ============================================================
+ACCENT = "#FF6B5B"
+ACCENT_MID = "#E8B339"
+ACCENT_LOW = "#2E9E73"
+
+# ============================================================
+# ⚠️⚠️⚠️ 매우 중요 — 절대 임의로 수정하지 마세요 ⚠️⚠️⚠️
+#
+# 아래 값 범위(income, household_size, is_mobile_bundled, provider)는
+# 추측이 아니라 extracted_data.csv(147,915행)를 pandas로 직접 열어서
+# 실제 데이터 분포를 확인한 결과입니다.
+#
+#   income            : 1~8 코드값 (연속값/만원단위 아님)
+#   household_size    : 1~3 코드값 (연속값 아님)
+#   is_mobile_bundled : 1=예, 2=아니오 (0은 데이터에 존재하지 않음)
+#   provider          : 1~5, 9999 (5는 라벨 미확인)
+#
+# 이 부분을 고치기 전에는 반드시 extracted_data.csv를 다시 검증하세요.
+# (검증 안 하고 "0부터 자유 입력" 등으로 되돌리면 모델이 본 적 없는 값이
+#  들어가서 예측이 틀어집니다.)
+# ============================================================
+
 
 def _build_analysis_prompt(result_df: pd.DataFrame) -> str:
     total = len(result_df)
@@ -32,7 +58,8 @@ def _build_analysis_prompt(result_df: pd.DataFrame) -> str:
     gender_dist = churn_df["gender"].map(gender_map).value_counts().to_dict()
     provider_dist = churn_df["provider"].map(provider_map).value_counts().to_dict()
     marriage_dist = churn_df["marriage"].map(marriage_map).value_counts().to_dict()
-    bundled_dist = churn_df["is_mobile_bundled"].map({0: "미가입", 1: "가입"}).value_counts().to_dict()
+    # is_mobile_bundled: 1=예, 2=아니오 (실제 데이터 검증 결과, 0 없음)
+    bundled_dist = churn_df["is_mobile_bundled"].map({1: "가입", 2: "미가입"}).value_counts().to_dict()
     avg_cost = churn_df["monthly_total_cost"].mean()
     avg_installment = churn_df["monthly_installment"].mean()
 
@@ -112,12 +139,13 @@ VALUE_LABEL_MAP = {
     "school":   {0: "무학", 1: "초등학교", 2: "중학교", 3: "중졸이하", 4: "고졸이하", 5: "대졸이하", 6: "대학원 재학 이상", 9999: "모름/무응답"},
     "job":      {1: "예", 2: "아니오"},
     "marriage": {1: "미혼", 2: "기혼", 3: "사별", 4: "이혼"},
-    "provider": {1: "SKT", 2: "KT", 3: "LG U+", 4: "알뜰폰", 9999: "모름/무응답"},
+    "provider": {1: "SKT", 2: "KT", 3: "LG U+", 4: "알뜰폰", 5: "기타(라벨 확인 필요)", 9999: "모름/무응답"},
     "cost_payer": {
         1: "본인", 2: "회사 전액부담", 3: "회사 일부지원",
         4: "가족/타인 전액부담", 5: "가족/타인 일부부담", 6: "기타",
     },
-    "is_mobile_bundled": {0: "아니오", 1: "예"},
+    # ⚠️ 실제 데이터 검증 결과 1=예, 2=아니오 (0 없음). 위쪽 큰 경고 주석 참고.
+    "is_mobile_bundled": {1: "예", 2: "아니오"},
 }
 
 
@@ -137,27 +165,101 @@ FIXED_YEAR = 24
 USER_INPUT_COLS = [c for c in PIPELINE_RAW_INPUT_COLS if c != "year"]
 
 
-def render_tab_telecom():
-    st.markdown("""""")
-    st.markdown("""
+def _render_header(title: str, subtitle: str, height: int = 130) -> None:
+    """app.py와 동일한 다크 네이비 + 코랄 그라데이션 헤더를 그립니다."""
+    components.html(f"""
     <div style="
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-        padding: 2rem 2.5rem;
-        border-radius: 16px;
-        margin-bottom: 1.5rem;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        background: linear-gradient(135deg, {ACCENT} 0%, #131B2E 100%);
+        padding: 36px 40px;
+        border-radius: 18px;
+        font-family: 'Segoe UI', sans-serif;
+        color: white;
+        margin-bottom: 8px;
     ">
-        <h1 style="color: #e94560; margin: 0 0 0.3rem 0; font-size: 2rem;">📡 통신사 이탈 예측</h1>
-        <p style="color: #a8b2d8; margin: 0; font-size: 1rem;">
-            고객 정보를 입력하면 통신사 이탈 가능성을 예측합니다.
-        </p>
+        <div style="display:flex; align-items:center; gap:14px;">
+            <div style="
+                width:52px; height:52px; border-radius:14px;
+                background: rgba(255,255,255,0.15);
+                display:flex; align-items:center; justify-content:center;
+                font-size:26px;
+            ">📡</div>
+            <div>
+                <h1 style="margin:0; font-size:1.8rem; font-weight:800;">
+                    {title}
+                </h1>
+                <p style="margin:4px 0 0; opacity:0.85; font-size:0.95rem;">
+                    {subtitle}
+                </p>
+            </div>
+        </div>
     </div>
+    """, height=height)
+
+
+def _render_result_card(churn_prob: float) -> None:
+    """app.py와 동일한 카드형 결과(좌측 보더 강조 + 진행 바)를 그립니다."""
+    pct = churn_prob * 100
+
+    if churn_prob >= 0.6:
+        risk_label, risk_emoji, risk_color = "이탈 위험", "⚠️", ACCENT
+    elif churn_prob >= 0.4:
+        risk_label, risk_emoji, risk_color = "주의 관찰", "🟡", ACCENT_MID
+    else:
+        risk_label, risk_emoji, risk_color = "안정", "✅", ACCENT_LOW
+
+    components.html(f"""
+    <div style="font-family:'Segoe UI', sans-serif; display:flex; gap:16px; flex-wrap:wrap;">
+        <div style="
+            flex:1; min-width:220px;
+            background:#131B2E; border-radius:16px; padding:24px;
+            border-left:6px solid {risk_color};
+            color:#F4F1EA;
+        ">
+            <div style="opacity:0.6; font-size:0.85rem; margin-bottom:6px;">예측 결과</div>
+            <div style="font-size:1.6rem; font-weight:800;">{risk_emoji} {risk_label}</div>
+        </div>
+        <div style="
+            flex:2; min-width:280px;
+            background:#131B2E; border-radius:16px; padding:24px;
+            color:#F4F1EA;
+        ">
+            <div style="opacity:0.6; font-size:0.85rem; margin-bottom:6px;">이탈 확률</div>
+            <div style="font-size:2.4rem; font-weight:800; color:{risk_color};">
+                {pct:.2f}%
+            </div>
+            <div style="
+                margin-top:10px; height:10px; border-radius:6px;
+                background:rgba(255,255,255,0.1); overflow:hidden;
+            ">
+                <div style="
+                    width:{min(pct,100)}%; height:100%;
+                    background:{risk_color}; border-radius:6px;
+                    transition: width 0.4s ease;
+                "></div>
+            </div>
+        </div>
+    </div>
+    """, height=160)
+
+
+def render_tab_telecom():
+    st.markdown(f"""
+        <style>
+        .block-title {{
+            font-size: 1.2rem;
+            font-weight: 700;
+            border-bottom: 3px solid {ACCENT};
+            padding-bottom: 6px;
+            margin-bottom: 14px;
+        }}
+        </style>
     """, unsafe_allow_html=True)
 
-    st.subheader("고객 정보 입력")
+    _render_header("통신사 이탈 예측", "고객 정보를 입력하면 통신사 이탈 가능성을 예측합니다")
+
+    st.markdown('<p class="block-title">고객 정보 입력</p>', unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
-
 
     with col1:
         age = st.selectbox(
@@ -220,8 +322,6 @@ def render_tab_telecom():
             format_func=lambda x: {1: "미혼", 2: "기혼", 3: "사별", 4: "이혼"}[x],
         )
 
-
-
         a02014 = st.selectbox(
             "이동통신사 (a02014)",
             options=[1, 2, 3, 4, 9999],
@@ -251,7 +351,7 @@ def render_tab_telecom():
             }[x],
         )
 
-    st.divider()
+    st.markdown("---")
 
     if st.button(" 🔍 이탈 여부 예측하기", type="primary", use_container_width=True):
         input_values = {
@@ -272,67 +372,20 @@ def render_tab_telecom():
 
         try:
             result = predict_churn(input_values)
-            churn_prob = result["churn_probability"] * 100
-            retain_prob = result["retention_probability"] * 100
-
-            if result["prediction"] == 1:
-                st.markdown(f"""
-                <div style="
-                    background: linear-gradient(135deg, #3d0000, #7b0000);
-                    border: 1px solid #e94560;
-                    border-radius: 12px;
-                    padding: 1.5rem 2rem;
-                    text-align: center;
-                ">
-                    <h2 style="color: #ff6b6b; margin: 0 0 0.5rem 0;">⚠️ 이탈 위험</h2>
-                    <p style="color: #ffd6d6; font-size: 1.1rem; margin: 0;">
-                        이탈 확률 <strong style="font-size:1.4rem;">{churn_prob:.1f}%</strong> · 잔류 확률 {retain_prob:.1f}%
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.markdown(f"""
-                <div style="
-                    background: linear-gradient(135deg, #003d1a, #00632b);
-                    border: 1px solid #00c853;
-                    border-radius: 12px;
-                    padding: 1.5rem 2rem;
-                    text-align: center;
-                ">
-                    <h2 style="color: #69f0ae; margin: 0 0 0.5rem 0;">✅ 잔류 가능성 높음</h2>
-                    <p style="color: #d0ffe8; font-size: 1.1rem; margin: 0;">
-                        잔류 확률 <strong style="font-size:1.4rem;">{retain_prob:.1f}%</strong> · 이탈 확률 {churn_prob:.1f}%
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
-
+            _render_result_card(result["churn_probability"])
         except Exception as e:
             st.error(f"예측 중 오류가 발생했습니다: {e}")
 
 
-
 def render_tab_test_telecom():
-    st.markdown("""""")
-    st.markdown("""
-    <div style="
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-        padding: 2rem 2.5rem;
-        border-radius: 16px;
-        margin-bottom: 1.5rem;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-    ">
-        <h1 style="color: #e94560; margin: 0 0 0.3rem 0; font-size: 2rem;">📡 통신사 이탈 예측 (Pipeline)</h1>
-        <p style="color: #a8b2d8; margin: 0; font-size: 1rem;">
-            고객 정보를 입력하면 통신사 이탈 가능성을 예측합니다.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+    _render_header("통신사 이탈 예측 (Pipeline)", "고객 정보를 입력하면 통신사 이탈 가능성을 예측합니다")
 
-    st.subheader("고객 정보 입력")
+    col1, col2, col3 = st.columns(3)
 
-    col1, col2 = st.columns(2)
-
+    # 컬럼 1: 인적 사항
     with col1:
+        st.markdown('<p class="block-title">인적 사항</p>', unsafe_allow_html=True)
+
         age = st.selectbox(
             "나이 (age)",
             options=[1, 2, 3, 4, 5, 6, 7, 8, 9999],
@@ -357,8 +410,6 @@ def render_tab_test_telecom():
             key="test_gender",
         )
 
-        income = st.number_input("소득 (income)", min_value=0, step=1, value=0, key="test_income")
-
         school = st.selectbox(
             "학력 (school)",
             options=[0, 1, 2, 3, 4, 5, 6, 9999],
@@ -375,6 +426,24 @@ def render_tab_test_telecom():
             key="test_school",
         )
 
+        marriage = st.selectbox(
+            "결혼여부 (marriage)",
+            options=[1, 2, 3, 4],
+            format_func=lambda x: {1: "미혼", 2: "기혼", 3: "사별", 4: "이혼"}[x],
+            key="test_marriage",
+        )
+
+    # 컬럼 2: 가구 및 소득
+    with col2:
+        st.markdown('<p class="block-title">가구 및 소득</p>', unsafe_allow_html=True)
+
+        # ⚠️ 검증된 값: extracted_data.csv 실제 검증 결과 income은 1~8 코드값입니다.
+        income = st.number_input(
+            "소득 (income, 코드값 1~8)",
+            min_value=1, max_value=8, step=1, value=1, key="test_income",
+            help="실제 학습 데이터(extracted_data.csv) 검증 결과 1~8 코드값입니다. 코드북 라벨 미확인.",
+        )
+
         area = st.selectbox(
             "지역 (area)",
             options=[1, 2, 3, 4, 5, 6, 7, 8, 9],
@@ -382,7 +451,12 @@ def render_tab_test_telecom():
             key="test_area",
         )
 
-        household_size = st.number_input("가구원수 (household_size)", min_value=1, step=1, value=1, key="test_hhldsiz")
+        # ⚠️ 검증된 값: extracted_data.csv 실제 검증 결과 household_size는 1~3 코드값입니다.
+        household_size = st.number_input(
+            "가구원수 (household_size, 코드값 1~3)",
+            min_value=1, max_value=3, step=1, value=1, key="test_hhldsiz",
+            help="실제 학습 데이터(extracted_data.csv) 검증 결과 1~3 코드값입니다. 코드북 라벨 미확인.",
+        )
 
         job = st.selectbox(
             "직업유무 (job)",
@@ -391,17 +465,13 @@ def render_tab_test_telecom():
             key="test_job",
         )
 
-    with col2:
-        marriage = st.selectbox(
-            "결혼여부 (marriage)",
-            options=[1, 2, 3, 4],
-            format_func=lambda x: {1: "미혼", 2: "기혼", 3: "사별", 4: "이혼"}[x],
-            key="test_marriage",
-        )
+    # 컬럼 3: 통신 서비스 및 비용
+    with col3:
+        st.markdown('<p class="block-title">통신 서비스 및 비용</p>', unsafe_allow_html=True)
 
         provider = st.selectbox(
             "이동통신사 (provider)",
-            # 실제 학습 데이터(extracted_data.csv) 검증 결과 1~5, 9999 존재. 5는 라벨 미확인.
+            # ⚠️ 검증된 값: extracted_data.csv 실제 검증 결과 1~5, 9999 존재. 5는 라벨 미확인.
             options=[1, 2, 3, 4, 5, 9999],
             format_func=lambda x: {
                 1: "SKT",
@@ -432,14 +502,15 @@ def render_tab_test_telecom():
             key="test_cost_payer",
         )
 
+        # ⚠️ 검증된 값: extracted_data.csv 실제 검증 결과 1=예, 2=아니오만 존재 (0 없음).
         is_mobile_bundled = st.selectbox(
             "결합할인 여부 (is_mobile_bundled)",
-            options=[1, 2],  # 실제 학습 데이터(extracted_data.csv) 검증 결과 1/2만 존재 (0 없음)
+            options=[1, 2],
             format_func=lambda x: {1: "예", 2: "아니오"}[x],
             key="test_bundled",
         )
 
-    st.divider()
+    st.markdown("---")
 
     if st.button("이탈 예측하기", type="primary", use_container_width=True, key="test_predict_btn"):
         input_values = {
@@ -461,42 +532,10 @@ def render_tab_test_telecom():
 
         try:
             result = predict_churn_pipeline(input_values)
-            churn_prob = result["churn_probability"] * 100
-            retain_prob = result["retention_probability"] * 100
-
-            if result["prediction"] == 1:
-                st.markdown(f"""
-                <div style="
-                    background: linear-gradient(135deg, #3d0000, #7b0000);
-                    border: 1px solid #e94560;
-                    border-radius: 12px;
-                    padding: 1.5rem 2rem;
-                    text-align: center;
-                ">
-                    <h2 style="color: #ff6b6b; margin: 0 0 0.5rem 0;">⚠️ 이탈 위험</h2>
-                    <p style="color: #ffd6d6; font-size: 1.1rem; margin: 0;">
-                        이탈 확률 <strong style="font-size:1.4rem;">{churn_prob:.1f}%</strong> · 잔류 확률 {retain_prob:.1f}%
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.markdown(f"""
-                <div style="
-                    background: linear-gradient(135deg, #003d1a, #00632b);
-                    border: 1px solid #00c853;
-                    border-radius: 12px;
-                    padding: 1.5rem 2rem;
-                    text-align: center;
-                ">
-                    <h2 style="color: #69f0ae; margin: 0 0 0.5rem 0;">✅ 잔류 가능성 높음</h2>
-                    <p style="color: #d0ffe8; font-size: 1.1rem; margin: 0;">
-                        잔류 확률 <strong style="font-size:1.4rem;">{retain_prob:.1f}%</strong> · 이탈 확률 {churn_prob:.1f}%
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
-
+            _render_result_card(result["churn_probability"])
         except Exception as e:
             st.error(f"예측 중 오류가 발생했습니다: {e}")
+
     # 단일 예측 아래에 다수 고객 일괄 예측 섹션을 표시합니다.
     render_batch_prediction()
 
@@ -507,27 +546,29 @@ def _build_sample_csv() -> bytes:
     # gender: 1=남 2=여 / provider: 1=SKT 2=KT 3=LGU+ 4=알뜰폰
     # marriage: 1=미혼 2=기혼 3=사별 4=이혼 / job: 1=예 2=아니오
     # cost_payer: 1=본인 2=회사전액 3=회사일부 4=가족전액 5=가족일부 6=기타
+    # ⚠️ income(1~8), household_size(1~3), is_mobile_bundled(1=예/2=아니오, 0 없음)는
+    #    extracted_data.csv 실제 검증 결과 기준 범위입니다. 코드북 라벨은 아직 미확인입니다.
     rows = [
-        {"age": 2, "gender": 1, "income": 100, "school": 3, "area": 1, "household_size": 4, "job": 2, "marriage": 1, "provider": 1, "monthly_total_cost": 45000, "monthly_installment": 20000, "cost_payer": 4, "is_mobile_bundled": 0},
-        {"age": 2, "gender": 2, "income": 80,  "school": 3, "area": 2, "household_size": 3, "job": 2, "marriage": 1, "provider": 2, "monthly_total_cost": 38000, "monthly_installment": 15000, "cost_payer": 4, "is_mobile_bundled": 1},
-        {"age": 3, "gender": 1, "income": 250, "school": 5, "area": 3, "household_size": 2, "job": 1, "marriage": 1, "provider": 3, "monthly_total_cost": 62000, "monthly_installment": 30000, "cost_payer": 1, "is_mobile_bundled": 0},
-        {"age": 3, "gender": 2, "income": 300, "school": 6, "area": 1, "household_size": 1, "job": 1, "marriage": 1, "provider": 1, "monthly_total_cost": 79000, "monthly_installment": 40000, "cost_payer": 1, "is_mobile_bundled": 1},
-        {"age": 4, "gender": 1, "income": 450, "school": 5, "area": 4, "household_size": 4, "job": 1, "marriage": 2, "provider": 2, "monthly_total_cost": 95000, "monthly_installment": 35000, "cost_payer": 2, "is_mobile_bundled": 1},
-        {"age": 4, "gender": 2, "income": 380, "school": 5, "area": 5, "household_size": 3, "job": 1, "marriage": 2, "provider": 1, "monthly_total_cost": 88000, "monthly_installment": 40000, "cost_payer": 1, "is_mobile_bundled": 1},
-        {"age": 4, "gender": 1, "income": 200, "school": 4, "area": 6, "household_size": 5, "job": 1, "marriage": 4, "provider": 4, "monthly_total_cost": 29000, "monthly_installment": 0,     "cost_payer": 1, "is_mobile_bundled": 0},
-        {"age": 5, "gender": 2, "income": 500, "school": 6, "area": 1, "household_size": 4, "job": 1, "marriage": 2, "provider": 1, "monthly_total_cost": 110000,"monthly_installment": 50000, "cost_payer": 3, "is_mobile_bundled": 1},
-        {"age": 5, "gender": 1, "income": 420, "school": 5, "area": 7, "household_size": 3, "job": 1, "marriage": 2, "provider": 3, "monthly_total_cost": 82000, "monthly_installment": 30000, "cost_payer": 1, "is_mobile_bundled": 0},
-        {"age": 5, "gender": 2, "income": 150, "school": 4, "area": 8, "household_size": 2, "job": 2, "marriage": 3, "provider": 4, "monthly_total_cost": 22000, "monthly_installment": 0,     "cost_payer": 5, "is_mobile_bundled": 0},
-        {"age": 6, "gender": 1, "income": 320, "school": 4, "area": 2, "household_size": 2, "job": 1, "marriage": 2, "provider": 2, "monthly_total_cost": 55000, "monthly_installment": 20000, "cost_payer": 1, "is_mobile_bundled": 1},
-        {"age": 6, "gender": 2, "income": 280, "school": 5, "area": 3, "household_size": 1, "job": 1, "marriage": 4, "provider": 1, "monthly_total_cost": 70000, "monthly_installment": 25000, "cost_payer": 1, "is_mobile_bundled": 0},
-        {"age": 6, "gender": 1, "income": 90,  "school": 2, "area": 9, "household_size": 3, "job": 2, "marriage": 2, "provider": 4, "monthly_total_cost": 18000, "monthly_installment": 0,     "cost_payer": 4, "is_mobile_bundled": 0},
-        {"age": 7, "gender": 2, "income": 200, "school": 4, "area": 4, "household_size": 2, "job": 2, "marriage": 3, "provider": 2, "monthly_total_cost": 33000, "monthly_installment": 0,     "cost_payer": 5, "is_mobile_bundled": 1},
-        {"age": 7, "gender": 1, "income": 260, "school": 3, "area": 5, "household_size": 2, "job": 1, "marriage": 2, "provider": 3, "monthly_total_cost": 48000, "monthly_installment": 10000, "cost_payer": 1, "is_mobile_bundled": 0},
-        {"age": 7, "gender": 2, "income": 130, "school": 1, "area": 6, "household_size": 1, "job": 2, "marriage": 3, "provider": 4, "monthly_total_cost": 15000, "monthly_installment": 0,     "cost_payer": 6, "is_mobile_bundled": 0},
-        {"age": 8, "gender": 1, "income": 170, "school": 2, "area": 7, "household_size": 2, "job": 2, "marriage": 3, "provider": 4, "monthly_total_cost": 12000, "monthly_installment": 0,     "cost_payer": 5, "is_mobile_bundled": 0},
-        {"age": 8, "gender": 2, "income": 110, "school": 1, "area": 8, "household_size": 1, "job": 2, "marriage": 3, "provider": 4, "monthly_total_cost": 10000, "monthly_installment": 0,     "cost_payer": 5, "is_mobile_bundled": 0},
-        {"age": 8, "gender": 1, "income": 300, "school": 4, "area": 2, "household_size": 3, "job": 2, "marriage": 2, "provider": 2, "monthly_total_cost": 40000, "monthly_installment": 0,     "cost_payer": 4, "is_mobile_bundled": 1},
-        {"age": 8, "gender": 2, "income": 220, "school": 3, "area": 9, "household_size": 2, "job": 2, "marriage": 2, "provider": 1, "monthly_total_cost": 35000, "monthly_installment": 0,     "cost_payer": 4, "is_mobile_bundled": 1},
+        {"age": 7, "gender": 1, "income": 1, "school": 6, "area": 5, "household_size": 1, "job": 1, "marriage": 2, "provider": 1, "monthly_total_cost": 110000, "monthly_installment": 50000, "cost_payer": 1, "is_mobile_bundled": 2},
+        {"age": 2, "gender": 1, "income": 2, "school": 2, "area": 4, "household_size": 3, "job": 1, "marriage": 2, "provider": 4, "monthly_total_cost": 35000, "monthly_installment": 40000, "cost_payer": 5, "is_mobile_bundled": 2},
+        {"age": 8, "gender": 1, "income": 3, "school": 6, "area": 7, "household_size": 2, "job": 2, "marriage": 2, "provider": 2, "monthly_total_cost": 55000, "monthly_installment": 10000, "cost_payer": 1, "is_mobile_bundled": 2},
+        {"age": 2, "gender": 2, "income": 6, "school": 5, "area": 5, "household_size": 1, "job": 2, "marriage": 1, "provider": 4, "monthly_total_cost": 22000, "monthly_installment": 50000, "cost_payer": 3, "is_mobile_bundled": 2},
+        {"age": 6, "gender": 1, "income": 2, "school": 1, "area": 4, "household_size": 2, "job": 1, "marriage": 2, "provider": 1, "monthly_total_cost": 62000, "monthly_installment": 25000, "cost_payer": 4, "is_mobile_bundled": 2},
+        {"age": 3, "gender": 2, "income": 6, "school": 2, "area": 5, "household_size": 3, "job": 1, "marriage": 2, "provider": 2, "monthly_total_cost": 29000, "monthly_installment": 40000, "cost_payer": 4, "is_mobile_bundled": 2},
+        {"age": 7, "gender": 1, "income": 6, "school": 1, "area": 4, "household_size": 1, "job": 2, "marriage": 4, "provider": 3, "monthly_total_cost": 22000, "monthly_installment": 20000, "cost_payer": 5, "is_mobile_bundled": 2},
+        {"age": 3, "gender": 2, "income": 7, "school": 6, "area": 8, "household_size": 1, "job": 2, "marriage": 2, "provider": 2, "monthly_total_cost": 82000, "monthly_installment": 50000, "cost_payer": 3, "is_mobile_bundled": 2},
+        {"age": 6, "gender": 2, "income": 6, "school": 2, "area": 3, "household_size": 3, "job": 2, "marriage": 1, "provider": 1, "monthly_total_cost": 22000, "monthly_installment": 15000, "cost_payer": 6, "is_mobile_bundled": 1},
+        {"age": 8, "gender": 2, "income": 2, "school": 4, "area": 7, "household_size": 3, "job": 2, "marriage": 3, "provider": 1, "monthly_total_cost": 110000, "monthly_installment": 10000, "cost_payer": 6, "is_mobile_bundled": 2},
+        {"age": 8, "gender": 2, "income": 2, "school": 3, "area": 7, "household_size": 1, "job": 2, "marriage": 1, "provider": 3, "monthly_total_cost": 82000, "monthly_installment": 15000, "cost_payer": 5, "is_mobile_bundled": 1},
+        {"age": 8, "gender": 2, "income": 4, "school": 2, "area": 6, "household_size": 1, "job": 1, "marriage": 3, "provider": 4, "monthly_total_cost": 15000, "monthly_installment": 10000, "cost_payer": 3, "is_mobile_bundled": 2},
+        {"age": 3, "gender": 1, "income": 4, "school": 5, "area": 2, "household_size": 1, "job": 2, "marriage": 1, "provider": 2, "monthly_total_cost": 29000, "monthly_installment": 40000, "cost_payer": 5, "is_mobile_bundled": 1},
+        {"age": 4, "gender": 2, "income": 4, "school": 5, "area": 4, "household_size": 3, "job": 2, "marriage": 4, "provider": 3, "monthly_total_cost": 70000, "monthly_installment": 50000, "cost_payer": 4, "is_mobile_bundled": 1},
+        {"age": 3, "gender": 1, "income": 2, "school": 3, "area": 1, "household_size": 3, "job": 1, "marriage": 2, "provider": 1, "monthly_total_cost": 22000, "monthly_installment": 0, "cost_payer": 2, "is_mobile_bundled": 1},
+        {"age": 2, "gender": 2, "income": 2, "school": 5, "area": 4, "household_size": 2, "job": 2, "marriage": 2, "provider": 2, "monthly_total_cost": 95000, "monthly_installment": 40000, "cost_payer": 2, "is_mobile_bundled": 2},
+        {"age": 8, "gender": 2, "income": 4, "school": 1, "area": 2, "household_size": 3, "job": 2, "marriage": 3, "provider": 4, "monthly_total_cost": 62000, "monthly_installment": 40000, "cost_payer": 6, "is_mobile_bundled": 1},
+        {"age": 7, "gender": 1, "income": 1, "school": 4, "area": 6, "household_size": 1, "job": 1, "marriage": 2, "provider": 2, "monthly_total_cost": 82000, "monthly_installment": 40000, "cost_payer": 2, "is_mobile_bundled": 2},
+        {"age": 3, "gender": 2, "income": 8, "school": 2, "area": 2, "household_size": 2, "job": 1, "marriage": 1, "provider": 1, "monthly_total_cost": 22000, "monthly_installment": 20000, "cost_payer": 2, "is_mobile_bundled": 2},
+        {"age": 5, "gender": 2, "income": 4, "school": 4, "area": 1, "household_size": 1, "job": 2, "marriage": 1, "provider": 4, "monthly_total_cost": 45000, "monthly_installment": 40000, "cost_payer": 3, "is_mobile_bundled": 2},
     ]
     for r in rows:
         r["year"] = 24
@@ -552,20 +593,10 @@ def _read_uploaded_table(uploaded_file) -> pd.DataFrame:
 
 def render_batch_prediction():
     """CSV/XLSX 파일을 업로드받아 다수 고객의 이탈을 한 번에 예측하고 시각화합니다."""
-    st.divider()
-    st.markdown("""
-    <div style="
-        background: linear-gradient(135deg, #16213e 0%, #0f3460 100%);
-        padding: 1.5rem 2rem;
-        border-radius: 14px;
-        margin-bottom: 1rem;
-    ">
-        <h2 style="color: #e94560; margin: 0 0 0.3rem 0; font-size: 1.5rem;">📁 다수 고객 일괄 예측</h2>
-        <p style="color: #a8b2d8; margin: 0; font-size: 0.95rem;">
-            CSV 또는 XLSX 파일을 업로드하면 모든 고객의 이탈 확률을 한 번에 예측합니다.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("---")
+
+    st.subheader("📁 다수 고객 일괄 예측")
+    st.caption("CSV 또는 XLSX 파일을 업로드하면 모든 고객의 이탈 확률을 한 번에 예측합니다")
 
     # 어떤 컬럼이 필요한지 안내하고, 채워 넣을 수 있는 샘플 양식을 내려받게 합니다.
     with st.expander("📋 업로드 파일 형식 안내 / 샘플 양식 다운로드"):
@@ -618,24 +649,28 @@ def render_batch_prediction():
     retain_count = total - churn_count
     avg_prob = float(result_df["churn_probability"].mean()) * 100
 
-    # 3) 요약 지표
+    # 3) 요약 지표 - 배경 없이 텍스트 위주로 표시
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("전체 고객", f"{total:,}명")
-    m2.metric("이탈 위험", f"{churn_count:,}명")
-    m3.metric("잔류 예상", f"{retain_count:,}명")
-    m4.metric("평균 이탈 확률", f"{avg_prob:.1f}%")
+    with m1:
+        st.metric("전체 고객", f"{total:,}명")
+    with m2:
+        st.metric("이탈 위험", f"{churn_count:,}명")
+    with m3:
+        st.metric("잔류 예상", f"{retain_count:,}명")
+    with m4:
+        st.metric("평균 이탈 확률", f"{avg_prob:.1f}%")
 
     st.markdown("### 📊 예측 결과 시각화")
     viz_col1, viz_col2 = st.columns(2)
 
-    # 3-1) 이탈/잔류 비율 도넛 차트
+    # 3-1) 이탈/잔류 비율 도넛 차트 - app.py 색상 톤 적용
     with viz_col1:
         donut = go.Figure(
             data=[go.Pie(
                 labels=["이탈 위험", "잔류 예상"],
                 values=[churn_count, retain_count],
                 hole=0.55,
-                marker=dict(colors=["#e94560", "#00c853"]),
+                marker=dict(colors=[ACCENT, ACCENT_LOW]),
                 textinfo="label+percent",
             )]
         )
@@ -644,10 +679,12 @@ def render_batch_prediction():
             showlegend=False,
             margin=dict(t=50, b=10, l=10, r=10),
             height=350,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
         )
         st.plotly_chart(donut, use_container_width=True)
 
-    # 3-2) 이탈 확률 분포 히스토그램
+    # 3-2) 이탈 확률 분포 히스토그램 - app.py 색상 톤 적용
     with viz_col2:
         hist = px.histogram(
             result_df,
@@ -655,14 +692,16 @@ def render_batch_prediction():
             nbins=20,
             title="이탈 확률 분포",
             labels={"churn_probability": "이탈 확률"},
-            color_discrete_sequence=["#e94560"],
+            color_discrete_sequence=[ACCENT],
         )
         # 0.5 기준선을 표시해 이탈/잔류 경계를 한눈에 보이게 합니다.
-        hist.add_vline(x=0.5, line_dash="dash", line_color="#a8b2d8")
+        hist.add_vline(x=0.5, line_dash="dash", line_color="#8A93A8")
         hist.update_layout(
             margin=dict(t=50, b=10, l=10, r=10),
             height=350,
             yaxis_title="고객 수",
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
         )
         st.plotly_chart(hist, use_container_width=True)
 
@@ -700,8 +739,8 @@ def render_batch_prediction():
         key="batch_result_download",
     )
 
-    st.divider()
-    st.markdown("### 🤖 AI 분석 (EXAONE 3.5)")
+    st.markdown("---")
+    st.markdown('<p class="block-title">🤖 AI 분석 (EXAONE 3.5)</p>', unsafe_allow_html=True)
     if st.button("이탈 고위험 고객 AI 분석 요청", type="primary", use_container_width=True, key="ai_analyze_btn"):
         prompt = _build_analysis_prompt(result_df)
         with st.spinner("EXAONE이 분석 중입니다..."):
