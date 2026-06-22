@@ -10,12 +10,10 @@ Signal-T는 얼굴 인식 기반 로그인과 머신러닝 모델을 결합한 S
 - [프로젝트 개요](#프로젝트-개요)
 - [주요 기능](#주요-기능)
 - [기술 스택](#기술-스택)
-- [제출물](#제출물)
 - [데이터 전처리 결과서](#데이터-전처리-결과서)
 - [학습된 인공지능 모델](#학습된-인공지능-모델)
 - [프로젝트 구조](#프로젝트-구조)
 - [설치 및 실행](#설치-및-실행)
-- [개발 모드](#개발-모드)
 - [사용 방법](#사용-방법)
 - [모델 교체 방법](#모델-교체-방법)
 - [향후 개선 계획](#향후-개선-계획)
@@ -80,9 +78,9 @@ Signal-T는 얼굴 인식 기반 로그인과 머신러닝 모델을 결합한 S
 
 ### 머신러닝 기반 이탈 예측
 
-- **예측 모델:** `models/churn_model.joblib`, `models/xgb_model.joblib`, `models/xgb_pipeline.joblib`
-- **예측 결과:** 이탈 확률, 위험도 등급, 고객 대응 가이드
-- **입력 항목:** 인적 사항, 통신 이용 행태, 결제 및 요금 정보
+- **예측 모델:** 
+- **예측 결과:** 
+- **입력 항목:** 
 
 ### 결과 시각화
 
@@ -127,11 +125,6 @@ Signal-T는 얼굴 인식 기반 로그인과 머신러닝 모델을 결합한 S
 
 ### 실험 요약
 
-- **베이스라인(001)** 대비, 전체 패널 데이터와 파생 변수를 활용한 **실험 004**에서 ROC-AUC가 0.6520 → 0.6715로 향상되었습니다.
-- Optuna 하이퍼파라미터 튜닝(006)과 결측치 처리 방식(007~008) 실험을 통해 안정적인 성능 구간을 확인했습니다.
-- XGBoost 단일 모델(010)과 learning_rate 조정(011), 신규 변수 추가(012)는 유의미한 개선을 보이지 않았습니다.
-- SMOTE 오버샘플링(013)과 3모델 앙상블(014)은 오히려 성능이 하락했습니다.
-- 최종적으로 **LightGBM + XGBoost 앙상블(015)** 구성을 채택해 ROC-AUC 0.6715를 달성했습니다.
 
 ## 학습된 인공지능 모델
 
@@ -141,9 +134,9 @@ Signal-T는 얼굴 인식 기반 로그인과 머신러닝 모델을 결합한 S
 
 | 구분 | 파일명 | 알고리즘 | 용도 |
 | :--- | :--- | :--- | :--- |
-| 베이스 모델 | `churn_model.joblib` | LightGBM | 단일 LightGBM 기반 이탈 예측 모델 |
-| 보조 모델 | `xgb_model.joblib` | XGBoost | 앙상블 구성용 XGBoost 단일 모델 |
-| 파이프라인 | `xgb_pipeline.joblib` | XGBoost + 전처리 파이프라인 | 전처리 단계가 포함된 추론용 파이프라인 |
+| 베이스 모델 | '' |  |  |
+| 보조 모델 | `` |  |  |
+| 파이프라인 | `` |     |  |
 
 ### 카테고리별 분류
 
@@ -161,34 +154,10 @@ Signal-T는 얼굴 인식 기반 로그인과 머신러닝 모델을 결합한 S
 
 #### 2. 전처리 파이프라인 모델 (Pipeline Model)
 
-- **`xgb_pipeline.joblib`**
-  - Scikit-learn `Pipeline` 객체로 전처리 + XGBoost 학습을 통합
-  - 원시 입력 데이터를 그대로 받아 추론할 수 있도록 구성
-  - 서비스 단계에서 별도 전처리 코드 없이 사용 가능
 
 #### 3. 최종 채택 모델 (Final Ensemble)
 
-- **LightGBM + XGBoost 앙상블**
-  - 실험 015에서 ROC-AUC **0.6715 ★** 달성
-  - `churn_model.joblib` (LightGBM) + `xgb_model.joblib` (XGBoost) 조합
-  - 서비스(`app/churn_service.py`, `app/telecom_churn_service.py`)에서 로딩되어 사용
 
-### 모델 사용 방법
-
-```python
-import joblib
-
-# 단일 LightGBM 모델 로딩
-churn_model = joblib.load("models/churn_model.joblib")
-
-# 전처리가 포함된 XGBoost 파이프라인 로딩
-xgb_pipeline = joblib.load("models/xgb_pipeline.joblib")
-
-# 앙상블 추론 예시
-proba_lgb = churn_model.predict_proba(X)[:, 1]
-proba_xgb = xgb_pipeline.predict_proba(X_raw)[:, 1]
-proba_final = (proba_lgb + proba_xgb) / 2
-```
 
 ## 프로젝트 구조
 
