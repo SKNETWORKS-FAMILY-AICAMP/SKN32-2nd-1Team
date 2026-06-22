@@ -191,7 +191,7 @@ proba_final = (proba_lgb + proba_xgb) / 2
 ```text
 SKN32-2nd-1Team/
 ├── app.py                         # 메인 실행 파일 (로그인 + 이탈 예측 화면 진입점)
-├── churn_view.py                  # 이탈 예측 UI 뷰 컴포넌트
+├── tab_telecom_churn.py                  # 이탈 예측 UI 뷰 컴포넌트
 ├── config.toml                    # Streamlit 테마 설정
 ├── requirements.txt               # Python 의존성 목록
 ├── README.md
