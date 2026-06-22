@@ -138,7 +138,13 @@ VALUE_LABEL_MAP = {
         1: "만 10세 미만", 2: "19세 미만", 3: "29세 미만", 4: "39세 미만",
         5: "49세 미만", 6: "59세 미만", 7: "69세 미만", 8: "70세 이상",
     },
+    "income": {
+        1: "소득없음", 2: "50만원 미만", 3: "100만원 미만", 4: "200만원 미만",
+        5: "300만원 미만", 6: "400만원 미만", 7: "500만원 미만", 8: "500만원 이상",
+        9999: "모름/무응답",
+    },
     "gender":   {1: "남", 2: "여"},
+    "household_size": {1: "1인가구", 2: "2인가구", 3: "3인가구이상"},
     # ⚠️ 검증된 값: extracted_data.csv 실제 검증 결과 1~6만 존재 (0=무학, 9999=모름 없음).
     "school":   {1: "초등학교", 2: "중학교", 3: "중졸이하", 4: "고졸이하", 5: "대졸이하", 6: "대학원 재학 이상"},
     "job":      {1: "예", 2: "아니오"},
@@ -318,18 +324,28 @@ def render_tab_test_telecom():
     with col2:
         st.markdown('<p class="block-title">가구 및 소득</p>', unsafe_allow_html=True)
 
-        # ⚠️ 검증된 값: extracted_data.csv 실제 검증 결과 income은 1~8 코드값입니다.
-        income = st.number_input(
-            "소득 (income, 원)",
-            min_value=1, max_value=8, step=1, value=1, key="test_income",
-            help="실제 학습 데이터(extracted_data.csv) 검증 결과 1~8 코드값입니다. 코드북 라벨 미확인.",
+        income = st.selectbox(
+            "소득 (income)",
+            options=[1, 2, 3, 4, 5, 6, 7, 8, 9999],
+            format_func=lambda x: {
+                1: "소득없음",
+                2: "50만원 미만",
+                3: "100만원 미만",
+                4: "200만원 미만",
+                5: "300만원 미만",
+                6: "400만원 미만",
+                7: "500만원 미만",
+                8: "500만원 이상",
+                9999: "모름/무응답",
+            }[x],
+            key="test_income",
         )
 
-        # ⚠️ 검증된 값: extracted_data.csv 실제 검증 결과 household_size는 1~3 코드값입니다.
-        household_size = st.number_input(
-            "가구원수 (household_size, 코드값 1~3)",
-            min_value=1, max_value=3, step=1, value=1, key="test_hhldsiz",
-            help="실제 학습 데이터(extracted_data.csv) 검증 결과 1~3 코드값입니다. 코드북 라벨 미확인.",
+        household_size = st.selectbox(
+            "가구원수 (household_size)",
+            options=[1, 2, 3],
+            format_func=lambda x: {1: "1인가구", 2: "2인가구", 3: "3인가구이상"}[x],
+            key="test_hhldsiz",
         )
 
         job = st.selectbox(
