@@ -198,6 +198,7 @@ elif menu == "통신사 개인 이탈 예측":
     from view.tab_telecom_churn import render_tab_test_telecom
 
     render_tab_test_telecom()
-
 elif menu == "통신사 이탈 예측":
-    pass
+    from view.telecom_predict import render_tab_next_provider
+
+    render_tab_next_provider()
