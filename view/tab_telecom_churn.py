@@ -5,7 +5,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
 from app.telecom_churn_service import (
-    predict_churn,
     predict_churn_pipeline,
     predict_churn_pipeline_batch,
     PIPELINE_RAW_INPUT_COLS,
@@ -28,17 +27,20 @@ ACCENT_LOW = "#2E9E73"
 # ============================================================
 # ⚠️⚠️⚠️ 매우 중요 — 절대 임의로 수정하지 마세요 ⚠️⚠️⚠️
 #
-# 아래 값 범위(income, household_size, is_mobile_bundled, provider)는
-# 추측이 아니라 extracted_data.csv(147,915행)를 pandas로 직접 열어서
-# 실제 데이터 분포를 확인한 결과입니다.
+# 아래 값 범위는 추측이 아니라 extracted_data.csv(147,915행)와
+# 모델 학습 코드(churn_modeling.ipynb)를 직접 열어서 확인한 결과입니다.
 #
-#   income            : 1~8 코드값 (연속값/만원단위 아님)
-#   household_size    : 1~3 코드값 (연속값 아님)
-#   is_mobile_bundled : 1=예, 2=아니오 (0은 데이터에 존재하지 않음)
-#   provider          : 1~5, 9999 (5는 라벨 미확인)
+#   income              : 1~8 코드값 (1=소득없음 ~ 8=500만원이상)
+#   household_size      : 1~3 코드값
+#   is_mobile_bundled   : 1=예, 2=아니오 (0은 데이터에 존재하지 않음)
+#   provider            : 1~5 (9999=모름/무응답은 학습 데이터에 존재하지 않음)
+#   school              : 1~6 (0=무학, 9999=모름/무응답은 학습 데이터에 존재하지 않음)
+#   monthly_total_cost  : 천원 단위 (예: 70 = 7만원)
+#   monthly_installment : 천원 단위 (예: 30 = 3만원)
+#   area                : 더 이상 사용하지 않음 (모델 입력에서 제외됨)
 #
-# 이 부분을 고치기 전에는 반드시 extracted_data.csv를 다시 검증하세요.
-# (검증 안 하고 "0부터 자유 입력" 등으로 되돌리면 모델이 본 적 없는 값이
+# 이 부분을 고치기 전에는 반드시 extracted_data.csv와 churn_modeling.ipynb를
+# 다시 검증하세요. (검증 안 하고 임의로 되돌리면 모델이 본 적 없는 값이
 #  들어가서 예측이 틀어집니다.)
 # ============================================================
 
@@ -60,8 +62,10 @@ def _build_analysis_prompt(result_df: pd.DataFrame) -> str:
     marriage_dist = churn_df["marriage"].map(marriage_map).value_counts().to_dict()
     # is_mobile_bundled: 1=예, 2=아니오 (실제 데이터 검증 결과, 0 없음)
     bundled_dist = churn_df["is_mobile_bundled"].map({1: "가입", 2: "미가입"}).value_counts().to_dict()
-    avg_cost = churn_df["monthly_total_cost"].mean()
-    avg_installment = churn_df["monthly_installment"].mean()
+    # monthly_total_cost / monthly_installment는 천원 단위로 입력받으므로
+    # 분석 텍스트에서는 보기 편하게 원 단위로 환산합니다.
+    avg_cost = churn_df["monthly_total_cost"].mean() * 1000
+    avg_installment = churn_df["monthly_installment"].mean() * 1000
 
     def fmt_dict(d):
         return ", ".join(f"{k} {v}명" for k, v in d.items())
@@ -119,13 +123,12 @@ KOREAN_COL_NAMES = {
     "gender":              "성별",
     "income":              "소득",
     "school":              "학력",
-    "area":                "지역",
     "household_size":      "가구원수",
     "job":                 "직업유무",
     "marriage":            "결혼여부",
     "provider":            "이동통신사",
-    "monthly_total_cost":  "월평균통신비(원)",
-    "monthly_installment": "월평균할부금(원)",
+    "monthly_total_cost":  "월평균통신비(천원)",
+    "monthly_installment": "월평균할부금(천원)",
     "cost_payer":          "요금부담자",
     "is_mobile_bundled":   "결합할인여부",
 }
@@ -133,13 +136,15 @@ KOREAN_COL_NAMES = {
 VALUE_LABEL_MAP = {
     "age": {
         1: "만 10세 미만", 2: "19세 미만", 3: "29세 미만", 4: "39세 미만",
-        5: "49세 미만", 6: "59세 미만", 7: "69세 미만", 8: "70세 이상", 9999: "모름/무응답",
+        5: "49세 미만", 6: "59세 미만", 7: "69세 미만", 8: "70세 이상",
     },
     "gender":   {1: "남", 2: "여"},
-    "school":   {0: "무학", 1: "초등학교", 2: "중학교", 3: "중졸이하", 4: "고졸이하", 5: "대졸이하", 6: "대학원 재학 이상", 9999: "모름/무응답"},
+    # ⚠️ 검증된 값: extracted_data.csv 실제 검증 결과 1~6만 존재 (0=무학, 9999=모름 없음).
+    "school":   {1: "초등학교", 2: "중학교", 3: "중졸이하", 4: "고졸이하", 5: "대졸이하", 6: "대학원 재학 이상"},
     "job":      {1: "예", 2: "아니오"},
     "marriage": {1: "미혼", 2: "기혼", 3: "사별", 4: "이혼"},
-    "provider": {1: "SKT", 2: "KT", 3: "LG U+", 4: "알뜰폰", 5: "기타(라벨 확인 필요)", 9999: "모름/무응답"},
+    # ⚠️ 검증된 값: extracted_data.csv 실제 검증 결과 1~5만 존재 (9999=모름 없음).
+    "provider": {1: "SKT", 2: "KT", 3: "LG U+", 4: "알뜰폰", 5: "기타(라벨 확인 필요)"},
     "cost_payer": {
         1: "본인", 2: "회사 전액부담", 3: "회사 일부지원",
         4: "가족/타인 전액부담", 5: "가족/타인 일부부담", 6: "기타",
@@ -157,12 +162,12 @@ def _decode_labels(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# year는 모델 입력에는 필요하지만 사용자가 신경 쓸 값이 아니므로 코드에서 고정합니다.
-# 단일 예측(render_tab_test_telecom)에서 쓰던 값과 동일하게 맞춥니다.
+# year, id는 모델 입력에는 필요하지만 사용자가 직접 입력/확인할 값이 아니므로
+# 코드에서 고정값으로 채웁니다(id는 patient_churn_service.SINGLE_PREDICT_FIXED_ID 사용).
 FIXED_YEAR = 24
 
-# 업로드 양식·미리보기·결과 화면에 노출할 컬럼 (year 제외).
-USER_INPUT_COLS = [c for c in PIPELINE_RAW_INPUT_COLS if c != "year"]
+# 업로드 양식·미리보기·결과 화면에 노출할 컬럼 (year, id 제외).
+USER_INPUT_COLS = [c for c in PIPELINE_RAW_INPUT_COLS if c not in ("year", "id")]
 
 
 def _render_header(title: str, subtitle: str, height: int = 130) -> None:
@@ -242,7 +247,7 @@ def _render_result_card(churn_prob: float) -> None:
     """, height=160)
 
 
-def render_tab_telecom():
+def render_tab_test_telecom():
     st.markdown(f"""
         <style>
         .block-title {{
@@ -255,129 +260,6 @@ def render_tab_telecom():
         </style>
     """, unsafe_allow_html=True)
 
-    _render_header("통신사 이탈 예측", "고객 정보를 입력하면 통신사 이탈 가능성을 예측합니다")
-
-    st.markdown('<p class="block-title">고객 정보 입력</p>', unsafe_allow_html=True)
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        age = st.selectbox(
-            "나이 (age)",
-            options=[1, 2, 3, 4, 5, 6, 7, 8, 9999],
-            format_func=lambda x: {
-                1: "만 10세 미만",
-                2: "19세 미만",
-                3: "29세 미만",
-                4: "39세 미만",
-                5: "49세 미만",
-                6: "59세 미만",
-                7: "69세 미만",
-                8: "70세 이상",
-                9999: "모름/무응답",
-            }[x],
-        )
-
-        gender = st.selectbox(
-            "성별 (gender)",
-            options=[1, 2],
-            format_func=lambda x: {1: "남", 2: "여"}[x],
-        )
-
-        income = st.number_input("월평균소득 (income)", min_value=0, step=1, value=0)
-
-        school = st.selectbox(
-            "학력 (school)",
-            options=[0, 1, 2, 3, 4, 5, 6, 9999],
-            format_func=lambda x: {
-                0: "무학",
-                1: "초등학교",
-                2: "중학교",
-                3: "중졸이하",
-                4: "고졸이하",
-                5: "대졸이하",
-                6: "대학원 재학 이상",
-                9999: "모름/무응답",
-            }[x],
-        )
-
-        area = st.selectbox(
-            "지역 (area)",
-            options=[1, 2, 3, 4, 5, 6, 7, 8, 9],
-            format_func=lambda x: str(x),
-        )
-
-        hhldsiz = st.number_input("가구원수 (hhldsiz)", min_value=1, step=1, value=1)
-
-        job1 = st.selectbox(
-            "직업유무 (job1)",
-            options=[1, 2],
-            format_func=lambda x: {1: "예", 2: "아니오"}[x],
-        )
-
-    with col2:
-        mar = st.selectbox(
-            "결혼여부 (mar)",
-            options=[1, 2, 3, 4],
-            format_func=lambda x: {1: "미혼", 2: "기혼", 3: "사별", 4: "이혼"}[x],
-        )
-
-        a02014 = st.selectbox(
-            "이동통신사 (a02014)",
-            options=[1, 2, 3, 4, 9999],
-            format_func=lambda x: {
-                1: "SKT",
-                2: "KT",
-                3: "LG U+",
-                4: "알뜰폰",
-                9999: "모름/무응답",
-            }[x],
-        )
-
-        c01001 = st.number_input("통신비 (c01001, 원)", min_value=0, step=1000, value=0)
-
-        c01003 = st.number_input("단말기 할부금 (c01003, 원)", min_value=0, step=1000, value=0)
-
-        c02001 = st.selectbox(
-            "요금제 (c02001)",
-            options=[1, 2, 3, 4, 5, 6],
-            format_func=lambda x: {
-                1: "본인",
-                2: "회사가 전액부담",
-                3: "회사가 일부지원",
-                4: "가족이나 타인이 전액부담",
-                5: "가족이나 타인이 일부부담",
-                6: "기타",
-            }[x],
-        )
-
-    st.markdown("---")
-
-    if st.button(" 🔍 이탈 여부 예측하기", type="primary", use_container_width=True):
-        input_values = {
-            "age": age,
-            "gender": gender,
-            "income": income,
-            "school": school,
-            "area": area,
-            "hhldsiz": hhldsiz,
-            "job1": job1,
-            "mar": mar,
-            "a02014": a02014,
-            "a03008": a02014,
-            "c01001": c01001,
-            "c01003": c01003,
-            "c02001": c02001,
-        }
-
-        try:
-            result = predict_churn(input_values)
-            _render_result_card(result["churn_probability"])
-        except Exception as e:
-            st.error(f"예측 중 오류가 발생했습니다: {e}")
-
-
-def render_tab_test_telecom():
     _render_header("통신사 이탈 예측 (Pipeline)", "고객 정보를 입력하면 통신사 이탈 가능성을 예측합니다")
 
     col1, col2, col3 = st.columns(3)
@@ -388,7 +270,8 @@ def render_tab_test_telecom():
 
         age = st.selectbox(
             "나이 (age)",
-            options=[1, 2, 3, 4, 5, 6, 7, 8, 9999],
+            # ⚠️ 검증된 값: extracted_data.csv 실제 검증 결과 1~8만 존재 (9999=모름 없음).
+            options=[1, 2, 3, 4, 5, 6, 7, 8],
             format_func=lambda x: {
                 1: "만 10세 미만",
                 2: "19세 미만",
@@ -398,7 +281,6 @@ def render_tab_test_telecom():
                 6: "59세 미만",
                 7: "69세 미만",
                 8: "70세 이상",
-                9999: "모름/무응답",
             }[x],
             key="test_age",
         )
@@ -412,16 +294,15 @@ def render_tab_test_telecom():
 
         school = st.selectbox(
             "학력 (school)",
-            options=[0, 1, 2, 3, 4, 5, 6, 9999],
+            # ⚠️ 검증된 값: extracted_data.csv 실제 검증 결과 1~6만 존재 (0=무학, 9999=모름 없음).
+            options=[1, 2, 3, 4, 5, 6],
             format_func=lambda x: {
-                0: "무학",
                 1: "초등학교",
                 2: "중학교",
                 3: "중졸이하",
                 4: "고졸이하",
                 5: "대졸이하",
                 6: "대학원 재학 이상",
-                9999: "모름/무응답",
             }[x],
             key="test_school",
         )
@@ -444,13 +325,6 @@ def render_tab_test_telecom():
             help="실제 학습 데이터(extracted_data.csv) 검증 결과 1~8 코드값입니다. 코드북 라벨 미확인.",
         )
 
-        area = st.selectbox(
-            "지역 (area)",
-            options=[1, 2, 3, 4, 5, 6, 7, 8, 9],
-            format_func=lambda x: str(x),
-            key="test_area",
-        )
-
         # ⚠️ 검증된 값: extracted_data.csv 실제 검증 결과 household_size는 1~3 코드값입니다.
         household_size = st.number_input(
             "가구원수 (household_size, 코드값 1~3)",
@@ -471,22 +345,31 @@ def render_tab_test_telecom():
 
         provider = st.selectbox(
             "이동통신사 (provider)",
-            # ⚠️ 검증된 값: extracted_data.csv 실제 검증 결과 1~5, 9999 존재. 5는 라벨 미확인.
-            options=[1, 2, 3, 4, 5, 9999],
+            # ⚠️ 검증된 값: extracted_data.csv 실제 검증 결과 1~5만 존재 (9999=모름 없음).
+            options=[1, 2, 3, 4, 5],
             format_func=lambda x: {
                 1: "SKT",
                 2: "KT",
                 3: "LG U+",
                 4: "알뜰폰",
                 5: "기타(라벨 확인 필요)",
-                9999: "모름/무응답",
             }[x],
             key="test_provider",
         )
 
-        monthly_total_cost = st.number_input("월평균 통신비 (monthly_total_cost, 원)", min_value=0, step=1000, value=0, key="test_cost")
+        # ⚠️ 단위 주의: 모델 학습 데이터(extracted_data.csv)의 monthly_total_cost,
+        # monthly_installment는 "천원" 단위입니다(예: 70 = 7만원). "원" 단위가 아닙니다.
+        monthly_total_cost = st.number_input(
+            "월평균 통신비 (monthly_total_cost, 천원)",
+            min_value=0, step=5, value=0, key="test_cost",
+            help="천원 단위입니다. 예: 7만원이면 70을 입력하세요.",
+        )
 
-        monthly_installment = st.number_input("월평균 할부금 (monthly_installment, 원)", min_value=0, step=1000, value=0, key="test_installment")
+        monthly_installment = st.number_input(
+            "월평균 할부금 (monthly_installment, 천원)",
+            min_value=0, step=5, value=0, key="test_installment",
+            help="천원 단위입니다. 예: 3만원이면 30을 입력하세요.",
+        )
 
         cost_payer = st.selectbox(
             "요금 부담자 (cost_payer)",
@@ -519,7 +402,6 @@ def render_tab_test_telecom():
             "gender": gender,
             "income": income,
             "school": school,
-            "area": area,
             "household_size": household_size,
             "job": job,
             "marriage": marriage,
@@ -542,33 +424,34 @@ def render_tab_test_telecom():
 
 def _build_sample_csv() -> bytes:
     """업로드 양식을 안내하기 위한 샘플 CSV를 메모리에서 생성합니다."""
-    # age: 2=19세미만 3=29세미만 4=39세미만 5=49세미만 6=59세미만 7=69세미만 8=70세이상
-    # gender: 1=남 2=여 / provider: 1=SKT 2=KT 3=LGU+ 4=알뜰폰
+    # age: 1~8 (9999=모름 없음) / gender: 1=남 2=여 / provider: 1~5 (9999=모름 없음)
     # marriage: 1=미혼 2=기혼 3=사별 4=이혼 / job: 1=예 2=아니오
     # cost_payer: 1=본인 2=회사전액 3=회사일부 4=가족전액 5=가족일부 6=기타
+    # school: 1~6 (0=무학, 9999=모름 없음)
     # ⚠️ income(1~8), household_size(1~3), is_mobile_bundled(1=예/2=아니오, 0 없음)는
     #    extracted_data.csv 실제 검증 결과 기준 범위입니다. 코드북 라벨은 아직 미확인입니다.
+    # ⚠️ monthly_total_cost, monthly_installment는 "천원" 단위입니다(예: 70 = 7만원).
     rows = [
-        {"age": 7, "gender": 1, "income": 1, "school": 6, "area": 5, "household_size": 1, "job": 1, "marriage": 2, "provider": 1, "monthly_total_cost": 110000, "monthly_installment": 50000, "cost_payer": 1, "is_mobile_bundled": 2},
-        {"age": 2, "gender": 1, "income": 2, "school": 2, "area": 4, "household_size": 3, "job": 1, "marriage": 2, "provider": 4, "monthly_total_cost": 35000, "monthly_installment": 40000, "cost_payer": 5, "is_mobile_bundled": 2},
-        {"age": 8, "gender": 1, "income": 3, "school": 6, "area": 7, "household_size": 2, "job": 2, "marriage": 2, "provider": 2, "monthly_total_cost": 55000, "monthly_installment": 10000, "cost_payer": 1, "is_mobile_bundled": 2},
-        {"age": 2, "gender": 2, "income": 6, "school": 5, "area": 5, "household_size": 1, "job": 2, "marriage": 1, "provider": 4, "monthly_total_cost": 22000, "monthly_installment": 50000, "cost_payer": 3, "is_mobile_bundled": 2},
-        {"age": 6, "gender": 1, "income": 2, "school": 1, "area": 4, "household_size": 2, "job": 1, "marriage": 2, "provider": 1, "monthly_total_cost": 62000, "monthly_installment": 25000, "cost_payer": 4, "is_mobile_bundled": 2},
-        {"age": 3, "gender": 2, "income": 6, "school": 2, "area": 5, "household_size": 3, "job": 1, "marriage": 2, "provider": 2, "monthly_total_cost": 29000, "monthly_installment": 40000, "cost_payer": 4, "is_mobile_bundled": 2},
-        {"age": 7, "gender": 1, "income": 6, "school": 1, "area": 4, "household_size": 1, "job": 2, "marriage": 4, "provider": 3, "monthly_total_cost": 22000, "monthly_installment": 20000, "cost_payer": 5, "is_mobile_bundled": 2},
-        {"age": 3, "gender": 2, "income": 7, "school": 6, "area": 8, "household_size": 1, "job": 2, "marriage": 2, "provider": 2, "monthly_total_cost": 82000, "monthly_installment": 50000, "cost_payer": 3, "is_mobile_bundled": 2},
-        {"age": 6, "gender": 2, "income": 6, "school": 2, "area": 3, "household_size": 3, "job": 2, "marriage": 1, "provider": 1, "monthly_total_cost": 22000, "monthly_installment": 15000, "cost_payer": 6, "is_mobile_bundled": 1},
-        {"age": 8, "gender": 2, "income": 2, "school": 4, "area": 7, "household_size": 3, "job": 2, "marriage": 3, "provider": 1, "monthly_total_cost": 110000, "monthly_installment": 10000, "cost_payer": 6, "is_mobile_bundled": 2},
-        {"age": 8, "gender": 2, "income": 2, "school": 3, "area": 7, "household_size": 1, "job": 2, "marriage": 1, "provider": 3, "monthly_total_cost": 82000, "monthly_installment": 15000, "cost_payer": 5, "is_mobile_bundled": 1},
-        {"age": 8, "gender": 2, "income": 4, "school": 2, "area": 6, "household_size": 1, "job": 1, "marriage": 3, "provider": 4, "monthly_total_cost": 15000, "monthly_installment": 10000, "cost_payer": 3, "is_mobile_bundled": 2},
-        {"age": 3, "gender": 1, "income": 4, "school": 5, "area": 2, "household_size": 1, "job": 2, "marriage": 1, "provider": 2, "monthly_total_cost": 29000, "monthly_installment": 40000, "cost_payer": 5, "is_mobile_bundled": 1},
-        {"age": 4, "gender": 2, "income": 4, "school": 5, "area": 4, "household_size": 3, "job": 2, "marriage": 4, "provider": 3, "monthly_total_cost": 70000, "monthly_installment": 50000, "cost_payer": 4, "is_mobile_bundled": 1},
-        {"age": 3, "gender": 1, "income": 2, "school": 3, "area": 1, "household_size": 3, "job": 1, "marriage": 2, "provider": 1, "monthly_total_cost": 22000, "monthly_installment": 0, "cost_payer": 2, "is_mobile_bundled": 1},
-        {"age": 2, "gender": 2, "income": 2, "school": 5, "area": 4, "household_size": 2, "job": 2, "marriage": 2, "provider": 2, "monthly_total_cost": 95000, "monthly_installment": 40000, "cost_payer": 2, "is_mobile_bundled": 2},
-        {"age": 8, "gender": 2, "income": 4, "school": 1, "area": 2, "household_size": 3, "job": 2, "marriage": 3, "provider": 4, "monthly_total_cost": 62000, "monthly_installment": 40000, "cost_payer": 6, "is_mobile_bundled": 1},
-        {"age": 7, "gender": 1, "income": 1, "school": 4, "area": 6, "household_size": 1, "job": 1, "marriage": 2, "provider": 2, "monthly_total_cost": 82000, "monthly_installment": 40000, "cost_payer": 2, "is_mobile_bundled": 2},
-        {"age": 3, "gender": 2, "income": 8, "school": 2, "area": 2, "household_size": 2, "job": 1, "marriage": 1, "provider": 1, "monthly_total_cost": 22000, "monthly_installment": 20000, "cost_payer": 2, "is_mobile_bundled": 2},
-        {"age": 5, "gender": 2, "income": 4, "school": 4, "area": 1, "household_size": 1, "job": 2, "marriage": 1, "provider": 4, "monthly_total_cost": 45000, "monthly_installment": 40000, "cost_payer": 3, "is_mobile_bundled": 2},
+        {"age": 7, "gender": 1, "income": 1, "school": 6, "household_size": 1, "job": 1, "marriage": 2, "provider": 1, "monthly_total_cost": 110, "monthly_installment": 50, "cost_payer": 1, "is_mobile_bundled": 2},
+        {"age": 2, "gender": 1, "income": 2, "school": 2, "household_size": 3, "job": 1, "marriage": 2, "provider": 4, "monthly_total_cost": 35, "monthly_installment": 40, "cost_payer": 5, "is_mobile_bundled": 2},
+        {"age": 8, "gender": 1, "income": 3, "school": 6, "household_size": 2, "job": 2, "marriage": 2, "provider": 2, "monthly_total_cost": 55, "monthly_installment": 10, "cost_payer": 1, "is_mobile_bundled": 2},
+        {"age": 2, "gender": 2, "income": 6, "school": 5, "household_size": 1, "job": 2, "marriage": 1, "provider": 4, "monthly_total_cost": 22, "monthly_installment": 50, "cost_payer": 3, "is_mobile_bundled": 2},
+        {"age": 6, "gender": 1, "income": 2, "school": 1, "household_size": 2, "job": 1, "marriage": 2, "provider": 1, "monthly_total_cost": 62, "monthly_installment": 25, "cost_payer": 4, "is_mobile_bundled": 2},
+        {"age": 3, "gender": 2, "income": 6, "school": 2, "household_size": 3, "job": 1, "marriage": 2, "provider": 2, "monthly_total_cost": 29, "monthly_installment": 40, "cost_payer": 4, "is_mobile_bundled": 2},
+        {"age": 7, "gender": 1, "income": 6, "school": 1, "household_size": 1, "job": 2, "marriage": 4, "provider": 3, "monthly_total_cost": 22, "monthly_installment": 20, "cost_payer": 5, "is_mobile_bundled": 2},
+        {"age": 3, "gender": 2, "income": 7, "school": 6, "household_size": 1, "job": 2, "marriage": 2, "provider": 2, "monthly_total_cost": 82, "monthly_installment": 50, "cost_payer": 3, "is_mobile_bundled": 2},
+        {"age": 6, "gender": 2, "income": 6, "school": 2, "household_size": 3, "job": 2, "marriage": 1, "provider": 1, "monthly_total_cost": 22, "monthly_installment": 15, "cost_payer": 6, "is_mobile_bundled": 1},
+        {"age": 8, "gender": 2, "income": 2, "school": 4, "household_size": 3, "job": 2, "marriage": 3, "provider": 1, "monthly_total_cost": 110, "monthly_installment": 10, "cost_payer": 6, "is_mobile_bundled": 2},
+        {"age": 8, "gender": 2, "income": 2, "school": 3, "household_size": 1, "job": 2, "marriage": 1, "provider": 3, "monthly_total_cost": 82, "monthly_installment": 15, "cost_payer": 5, "is_mobile_bundled": 1},
+        {"age": 8, "gender": 2, "income": 4, "school": 2, "household_size": 1, "job": 1, "marriage": 3, "provider": 4, "monthly_total_cost": 15, "monthly_installment": 10, "cost_payer": 3, "is_mobile_bundled": 2},
+        {"age": 3, "gender": 1, "income": 4, "school": 5, "household_size": 1, "job": 2, "marriage": 1, "provider": 2, "monthly_total_cost": 29, "monthly_installment": 40, "cost_payer": 5, "is_mobile_bundled": 1},
+        {"age": 4, "gender": 2, "income": 4, "school": 5, "household_size": 3, "job": 2, "marriage": 4, "provider": 3, "monthly_total_cost": 70, "monthly_installment": 50, "cost_payer": 4, "is_mobile_bundled": 1},
+        {"age": 3, "gender": 1, "income": 2, "school": 3, "household_size": 3, "job": 1, "marriage": 2, "provider": 1, "monthly_total_cost": 22, "monthly_installment": 0, "cost_payer": 2, "is_mobile_bundled": 1},
+        {"age": 2, "gender": 2, "income": 2, "school": 5, "household_size": 2, "job": 2, "marriage": 2, "provider": 2, "monthly_total_cost": 95, "monthly_installment": 40, "cost_payer": 2, "is_mobile_bundled": 2},
+        {"age": 8, "gender": 2, "income": 4, "school": 1, "household_size": 3, "job": 2, "marriage": 3, "provider": 4, "monthly_total_cost": 62, "monthly_installment": 40, "cost_payer": 6, "is_mobile_bundled": 1},
+        {"age": 7, "gender": 1, "income": 1, "school": 4, "household_size": 1, "job": 1, "marriage": 2, "provider": 2, "monthly_total_cost": 82, "monthly_installment": 40, "cost_payer": 2, "is_mobile_bundled": 2},
+        {"age": 3, "gender": 2, "income": 8, "school": 2, "household_size": 2, "job": 1, "marriage": 1, "provider": 1, "monthly_total_cost": 22, "monthly_installment": 20, "cost_payer": 2, "is_mobile_bundled": 2},
+        {"age": 5, "gender": 2, "income": 4, "school": 4, "household_size": 1, "job": 2, "marriage": 1, "provider": 4, "monthly_total_cost": 45, "monthly_installment": 40, "cost_payer": 3, "is_mobile_bundled": 2},
     ]
     for r in rows:
         r["year"] = 24
@@ -722,8 +605,8 @@ def render_batch_prediction():
 
     # 4) 전체 예측 결과 다운로드
     out_df = result_df.copy()
-    # 다운로드 결과에서도 year는 제외합니다.
-    out_df = out_df.drop(columns=["year"], errors="ignore")
+    # 다운로드 결과에서도 year, id는 제외합니다 (id는 화면에서 직접 입력받지 않는 값입니다).
+    out_df = out_df.drop(columns=["year", "id"], errors="ignore")
     out_df["churn_probability"] = (out_df["churn_probability"] * 100).round(2)
     out_df["retention_probability"] = (out_df["retention_probability"] * 100).round(2)
     out_df = out_df.rename(columns={

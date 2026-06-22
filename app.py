@@ -143,16 +143,16 @@ elif menu == "프로젝트 개요":
         "장기 수익성을 결정짓는 핵심 투자 지표입니다."
     )
 
-    # 실제 churn_panel_v3.csv 기준 통계 (신규 변수 3개 통합 버전)
+    # 실제 extracted_data.csv 기준 통계 (한국미디어패널조사 2010~2024년, area 변수 제외 버전)
     stat_col1, stat_col2, stat_col3 = st.columns(3)
     with stat_col1:
-        st.metric("총 데이터 수", "86,130건")
+        st.metric("총 데이터 수", "147,915건")
     with stat_col2:
-        st.metric("분석 대상 기간", "2015년 ~ 2024년")
+        st.metric("분석 대상 기간", "2010년 ~ 2024년")
     with stat_col3:
-        st.metric("이탈 데이터 수", "31,403건")
+        st.metric("이탈 데이터 수", "43,910건")
 
-    st.caption("📌 churn_panel_v3.csv 기준 실제 통계입니다. (전체 이탈률 약 36.5%, usage_period·tablet_owned·wearable_owned 변수 통합)")
+    st.caption("📌 extracted_data.csv 기준 실제 통계입니다. (이탈 여부가 집계된 118,336건 중 이탈률 약 37.1%, 통신사 변경 시 이탈로 정의)")
 
     st.markdown("---")
     st.markdown("### 2. 프로젝트 목표")
@@ -169,38 +169,32 @@ elif menu == "프로젝트 개요":
 
     with st.expander("📊 활용 데이터 컬럼 상세 보기"):
         column_info = [
-            ("pid", "개인 통합 ID", "고유 식별 번호"),
-            ("year", "조사 연도", "2015 ~ 2024"),
+            ("id", "개인 통합 ID", "고유 식별 번호"),
+            ("year", "조사 연도", "2010 ~ 2024 (코드값, 10=2010년 ~ 24=2024년)"),
             ("age", "나이", "1=10세미만 ~ 8=70세이상 (8단계)"),
             ("gender", "성별", "1=남성, 2=여성"),
             ("income", "개인 월평균 소득", "1=소득없음 ~ 8=500만원이상 (8단계)"),
-            ("school", "최종 학력", "1=미취학 ~ 6=대학원재학이상 (6단계)"),
-            ("area", "거주 지역", "코드값 1~17, 17개 시도 (라벨 미확인 — 문의 중)"),
-            ("hhldsiz", "가구원 수", "코드값 1~3"),
-            ("job1", "직업 유무", "1=예, 2=아니오"),
-            ("mar", "결혼 여부", "1=미혼, 2=배우자있음, 3=사별, 4=이혼"),
-            ("carrier", "가입 통신사", "1=SKT, 2=KT, 3=LGU+, 4=알뜰폰(MVNO)"),
-            ("usage_period", "휴대폰 사용기간", "연속값 · 2021년 이후 조사 방식 기준 (단위 추가 확인 필요)"),
-            ("tablet_owned", "태블릿 PC 보유 여부", "1=있다, 2=없다 · 2019년 이전 데이터는 -1(미조사)"),
-            ("wearable_owned", "웨어러블 기기 보유 여부", "1=있다, 2=없다 · 2017년 이전 데이터는 -1(미조사)"),
-            ("churn", "이탈 여부 (Target)", "유지(0), 이탈(1) — 전체 이탈률 약 36.5%"),
+            ("school", "최종 학력", "1=초등학교 ~ 6=대학원재학이상 (6단계)"),
+            ("household_size", "가구원 수", "코드값 1~3"),
+            ("job", "직업 유무", "1=예, 2=아니오"),
+            ("marriage", "결혼 여부", "1=미혼, 2=배우자있음, 3=사별, 4=이혼"),
+            ("provider", "가입 통신사", "1=SKT, 2=KT, 3=LGU+, 4=알뜰폰(MVNO), 5=기타(라벨 확인 필요)"),
+            ("monthly_total_cost", "월평균 통신비", "천원 단위 (예: 70 = 7만원)"),
+            ("monthly_installment", "월평균 기기 할부금", "천원 단위 (예: 30 = 3만원)"),
+            ("cost_payer", "통신비 부담자", "1=본인 ~ 6=기타 (6단계)"),
+            ("is_mobile_bundled", "결합상품 가입 여부", "1=예, 2=아니오 (2017년 이후 조사 변수)"),
+            ("churn", "이탈 여부 (Target)", "유지(0), 이탈(1) — 다음 해 가입 통신사가 바뀌면 이탈로 정의, 전체 이탈률 약 37.1%"),
         ]
         df_columns = pd.DataFrame(column_info, columns=["컬럼명", "설명", "비고"])
         st.table(df_columns)
 
         st.caption(
             "📌 한국미디어패널조사 코드북(P_codebook_v32) 기준 라벨입니다. "
-            "area(거주 지역)는 코드북·유저가이드에 라벨이 없어 운영기관에 문의 중입니다. "
-            "usage_period·tablet_owned·wearable_owned은 결측 연도가 있던 변수를 통합해 추가했습니다."
+            "거주 지역(area)은 모델 성능 검증 결과 예측에 기여도가 낮아 최신 모델부터 입력 변수에서 제외했습니다. "
+            "이탈(churn) 라벨은 연속된 두 조사 연도 사이에 가입 통신사가 바뀐 경우로 정의했습니다."
         )
 
 elif menu == "통신사 이탈 예측":
-    from view.tab_telecom_churn import render_tab_telecom, render_tab_test_telecom
+    from view.tab_telecom_churn import render_tab_test_telecom
 
     render_tab_test_telecom()
-    # tab1= st.tabs([
-    #     "📊 통신사 이탈 예측(xgb_pipline)."
-    # ])
-    # with tab1:
-        # render_tab_telecom()
-
