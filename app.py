@@ -119,7 +119,7 @@ with st.sidebar:
         st.header("메뉴 선택")
         menu = st.radio(
             "메뉴",
-            ["프로젝트 개요", "개인별 이탈 예측"],
+            ["프로젝트 개요", "개인별 이탈 예측", "통신사 이탈 예측"],
             label_visibility="collapsed",
         )
     else:
@@ -577,3 +577,14 @@ elif menu == "개인별 이탈 예측":
             st.warning("이 고객은 이탈 가능성이 높습니다. 장기 계약 할인, 기술 지원 강화, 요금제 재설계를 검토하세요.")
         else:
             st.success("이 고객은 현재 잔류 가능성이 높습니다. 만족도 유지와 추가 서비스 제안을 검토하세요.")
+elif menu == "통신사 이탈 예측":
+    from view.tab_telecom_churn import render_tab_telecom, render_tab_test_telecom
+
+    tab1, tab2 = st.tabs([
+        "📊 통신사 이탈 예측(xgb_model)",
+        "📊 통신사 이탈 예측(xgb_pipline)."
+    ])
+    with tab1:
+        render_tab_telecom()
+    with tab2:
+        render_tab_test_telecom()
