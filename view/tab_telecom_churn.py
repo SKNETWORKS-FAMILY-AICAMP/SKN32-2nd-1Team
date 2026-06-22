@@ -3,7 +3,63 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
-from app.telecom_churn_service import predict_churn, predict_churn_pipeline
+from app.telecom_churn_service import (
+    predict_churn,
+    predict_churn_pipeline,
+    predict_churn_pipeline_batch,
+    PIPELINE_RAW_INPUT_COLS,
+)
+import io
+
+KOREAN_COL_NAMES = {
+    "year":                "조사연도",
+    "age":                 "나이",
+    "gender":              "성별",
+    "income":              "소득",
+    "school":              "학력",
+    "area":                "지역",
+    "household_size":      "가구원수",
+    "job":                 "직업유무",
+    "marriage":            "결혼여부",
+    "provider":            "이동통신사",
+    "monthly_total_cost":  "월평균통신비(원)",
+    "monthly_installment": "월평균할부금(원)",
+    "cost_payer":          "요금부담자",
+    "is_mobile_bundled":   "결합할인여부",
+}
+
+VALUE_LABEL_MAP = {
+    "age": {
+        1: "만 10세 미만", 2: "19세 미만", 3: "29세 미만", 4: "39세 미만",
+        5: "49세 미만", 6: "59세 미만", 7: "69세 미만", 8: "70세 이상", 9999: "모름/무응답",
+    },
+    "gender":   {1: "남", 2: "여"},
+    "school":   {0: "무학", 1: "초등학교", 2: "중학교", 3: "중졸이하", 4: "고졸이하", 5: "대졸이하", 6: "대학원 재학 이상", 9999: "모름/무응답"},
+    "job":      {1: "예", 2: "아니오"},
+    "marriage": {1: "미혼", 2: "기혼", 3: "사별", 4: "이혼"},
+    "provider": {1: "SKT", 2: "KT", 3: "LG U+", 4: "알뜰폰", 9999: "모름/무응답"},
+    "cost_payer": {
+        1: "본인", 2: "회사 전액부담", 3: "회사 일부지원",
+        4: "가족/타인 전액부담", 5: "가족/타인 일부부담", 6: "기타",
+    },
+    "is_mobile_bundled": {0: "아니오", 1: "예"},
+}
+
+
+def _decode_labels(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    for col, mapping in VALUE_LABEL_MAP.items():
+        if col in df.columns:
+            df[col] = df[col].map(mapping).fillna(df[col])
+    return df
+
+
+# year는 모델 입력에는 필요하지만 사용자가 신경 쓸 값이 아니므로 코드에서 고정합니다.
+# 단일 예측(render_tab_test_telecom)에서 쓰던 값과 동일하게 맞춥니다.
+FIXED_YEAR = 24
+
+# 업로드 양식·미리보기·결과 화면에 노출할 컬럼 (year 제외).
+USER_INPUT_COLS = [c for c in PIPELINE_RAW_INPUT_COLS if c != "year"]
 
 
 def render_tab_telecom():
@@ -364,3 +420,205 @@ def render_tab_test_telecom():
 
         except Exception as e:
             st.error(f"예측 중 오류가 발생했습니다: {e}")
+    # 단일 예측 아래에 다수 고객 일괄 예측 섹션을 표시합니다.
+    render_batch_prediction()
+
+
+def _build_sample_csv() -> bytes:
+    """업로드 양식을 안내하기 위한 샘플 CSV를 메모리에서 생성합니다."""
+    # age: 2=19세미만 3=29세미만 4=39세미만 5=49세미만 6=59세미만 7=69세미만 8=70세이상
+    # gender: 1=남 2=여 / provider: 1=SKT 2=KT 3=LGU+ 4=알뜰폰
+    # marriage: 1=미혼 2=기혼 3=사별 4=이혼 / job: 1=예 2=아니오
+    # cost_payer: 1=본인 2=회사전액 3=회사일부 4=가족전액 5=가족일부 6=기타
+    rows = [
+        {"age": 2, "gender": 1, "income": 100, "school": 3, "area": 1, "household_size": 4, "job": 2, "marriage": 1, "provider": 1, "monthly_total_cost": 45000, "monthly_installment": 20000, "cost_payer": 4, "is_mobile_bundled": 0},
+        {"age": 2, "gender": 2, "income": 80,  "school": 3, "area": 2, "household_size": 3, "job": 2, "marriage": 1, "provider": 2, "monthly_total_cost": 38000, "monthly_installment": 15000, "cost_payer": 4, "is_mobile_bundled": 1},
+        {"age": 3, "gender": 1, "income": 250, "school": 5, "area": 3, "household_size": 2, "job": 1, "marriage": 1, "provider": 3, "monthly_total_cost": 62000, "monthly_installment": 30000, "cost_payer": 1, "is_mobile_bundled": 0},
+        {"age": 3, "gender": 2, "income": 300, "school": 6, "area": 1, "household_size": 1, "job": 1, "marriage": 1, "provider": 1, "monthly_total_cost": 79000, "monthly_installment": 40000, "cost_payer": 1, "is_mobile_bundled": 1},
+        {"age": 4, "gender": 1, "income": 450, "school": 5, "area": 4, "household_size": 4, "job": 1, "marriage": 2, "provider": 2, "monthly_total_cost": 95000, "monthly_installment": 35000, "cost_payer": 2, "is_mobile_bundled": 1},
+        {"age": 4, "gender": 2, "income": 380, "school": 5, "area": 5, "household_size": 3, "job": 1, "marriage": 2, "provider": 1, "monthly_total_cost": 88000, "monthly_installment": 40000, "cost_payer": 1, "is_mobile_bundled": 1},
+        {"age": 4, "gender": 1, "income": 200, "school": 4, "area": 6, "household_size": 5, "job": 1, "marriage": 4, "provider": 4, "monthly_total_cost": 29000, "monthly_installment": 0,     "cost_payer": 1, "is_mobile_bundled": 0},
+        {"age": 5, "gender": 2, "income": 500, "school": 6, "area": 1, "household_size": 4, "job": 1, "marriage": 2, "provider": 1, "monthly_total_cost": 110000,"monthly_installment": 50000, "cost_payer": 3, "is_mobile_bundled": 1},
+        {"age": 5, "gender": 1, "income": 420, "school": 5, "area": 7, "household_size": 3, "job": 1, "marriage": 2, "provider": 3, "monthly_total_cost": 82000, "monthly_installment": 30000, "cost_payer": 1, "is_mobile_bundled": 0},
+        {"age": 5, "gender": 2, "income": 150, "school": 4, "area": 8, "household_size": 2, "job": 2, "marriage": 3, "provider": 4, "monthly_total_cost": 22000, "monthly_installment": 0,     "cost_payer": 5, "is_mobile_bundled": 0},
+        {"age": 6, "gender": 1, "income": 320, "school": 4, "area": 2, "household_size": 2, "job": 1, "marriage": 2, "provider": 2, "monthly_total_cost": 55000, "monthly_installment": 20000, "cost_payer": 1, "is_mobile_bundled": 1},
+        {"age": 6, "gender": 2, "income": 280, "school": 5, "area": 3, "household_size": 1, "job": 1, "marriage": 4, "provider": 1, "monthly_total_cost": 70000, "monthly_installment": 25000, "cost_payer": 1, "is_mobile_bundled": 0},
+        {"age": 6, "gender": 1, "income": 90,  "school": 2, "area": 9, "household_size": 3, "job": 2, "marriage": 2, "provider": 4, "monthly_total_cost": 18000, "monthly_installment": 0,     "cost_payer": 4, "is_mobile_bundled": 0},
+        {"age": 7, "gender": 2, "income": 200, "school": 4, "area": 4, "household_size": 2, "job": 2, "marriage": 3, "provider": 2, "monthly_total_cost": 33000, "monthly_installment": 0,     "cost_payer": 5, "is_mobile_bundled": 1},
+        {"age": 7, "gender": 1, "income": 260, "school": 3, "area": 5, "household_size": 2, "job": 1, "marriage": 2, "provider": 3, "monthly_total_cost": 48000, "monthly_installment": 10000, "cost_payer": 1, "is_mobile_bundled": 0},
+        {"age": 7, "gender": 2, "income": 130, "school": 1, "area": 6, "household_size": 1, "job": 2, "marriage": 3, "provider": 4, "monthly_total_cost": 15000, "monthly_installment": 0,     "cost_payer": 6, "is_mobile_bundled": 0},
+        {"age": 8, "gender": 1, "income": 170, "school": 2, "area": 7, "household_size": 2, "job": 2, "marriage": 3, "provider": 4, "monthly_total_cost": 12000, "monthly_installment": 0,     "cost_payer": 5, "is_mobile_bundled": 0},
+        {"age": 8, "gender": 2, "income": 110, "school": 1, "area": 8, "household_size": 1, "job": 2, "marriage": 3, "provider": 4, "monthly_total_cost": 10000, "monthly_installment": 0,     "cost_payer": 5, "is_mobile_bundled": 0},
+        {"age": 8, "gender": 1, "income": 300, "school": 4, "area": 2, "household_size": 3, "job": 2, "marriage": 2, "provider": 2, "monthly_total_cost": 40000, "monthly_installment": 0,     "cost_payer": 4, "is_mobile_bundled": 1},
+        {"age": 8, "gender": 2, "income": 220, "school": 3, "area": 9, "household_size": 2, "job": 2, "marriage": 2, "provider": 1, "monthly_total_cost": 35000, "monthly_installment": 0,     "cost_payer": 4, "is_mobile_bundled": 1},
+    ]
+    for r in rows:
+        r["year"] = 24
+    sample = pd.DataFrame(rows, columns=USER_INPUT_COLS)
+    return sample.to_csv(index=False).encode("utf-8-sig")
+
+
+def _read_uploaded_table(uploaded_file) -> pd.DataFrame:
+    """업로드된 파일을 확장자에 따라 CSV 또는 XLSX로 읽어 DataFrame으로 반환합니다."""
+    name = uploaded_file.name.lower()
+    if name.endswith(".csv"):
+        # 한글이 섞인 CSV도 안전하게 읽도록 utf-8-sig를 우선 시도합니다.
+        try:
+            return pd.read_csv(uploaded_file, encoding="utf-8-sig")
+        except UnicodeDecodeError:
+            uploaded_file.seek(0)
+            return pd.read_csv(uploaded_file, encoding="cp949")
+    elif name.endswith((".xlsx", ".xls")):
+        return pd.read_excel(uploaded_file)
+    raise ValueError("CSV 또는 XLSX 파일만 업로드할 수 있습니다.")
+
+
+def render_batch_prediction():
+    """CSV/XLSX 파일을 업로드받아 다수 고객의 이탈을 한 번에 예측하고 시각화합니다."""
+    st.divider()
+    st.markdown("""
+    <div style="
+        background: linear-gradient(135deg, #16213e 0%, #0f3460 100%);
+        padding: 1.5rem 2rem;
+        border-radius: 14px;
+        margin-bottom: 1rem;
+    ">
+        <h2 style="color: #e94560; margin: 0 0 0.3rem 0; font-size: 1.5rem;">📁 다수 고객 일괄 예측</h2>
+        <p style="color: #a8b2d8; margin: 0; font-size: 0.95rem;">
+            CSV 또는 XLSX 파일을 업로드하면 모든 고객의 이탈 확률을 한 번에 예측합니다.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 어떤 컬럼이 필요한지 안내하고, 채워 넣을 수 있는 샘플 양식을 내려받게 합니다.
+    with st.expander("📋 업로드 파일 형식 안내 / 샘플 양식 다운로드"):
+        st.markdown(
+            "아래 컬럼명(영문)을 헤더로 사용하고, 값은 단일 예측 화면과 동일한 코드값으로 채워주세요."
+        )
+        st.code(", ".join(USER_INPUT_COLS), language="text")
+        st.download_button(
+            "📥 샘플 CSV 양식 다운로드",
+            data=_build_sample_csv(),
+            file_name="telecom_churn_sample.csv",
+            mime="text/csv",
+            key="batch_sample_download",
+        )
+
+    uploaded = st.file_uploader(
+        "고객 데이터 파일 업로드 (CSV / XLSX)",
+        type=["csv", "xlsx", "xls"],
+        key="batch_uploader",
+    )
+
+    if uploaded is None:
+        return
+
+    # 1) 파일 읽기
+    try:
+        raw_df = _read_uploaded_table(uploaded)
+    except Exception as e:
+        st.error(f"파일을 읽는 중 오류가 발생했습니다: {e}")
+        return
+
+    # year는 사용자가 입력하지 않으므로 코드에서 고정값으로 채워 넣습니다.
+    raw_df["year"] = FIXED_YEAR
+
+    st.markdown(f"**업로드된 행 수:** {len(raw_df)}건")
+    with st.expander("업로드 데이터 미리보기 (상위 10행)"):
+        # 미리보기에서는 year를 제외하고 보여줍니다.
+        preview_cols = [c for c in raw_df.columns if c != "year"]
+        st.dataframe(raw_df[preview_cols].head(10), use_container_width=True)
+
+    # 2) 배치 예측
+    try:
+        result_df = predict_churn_pipeline_batch(raw_df)
+    except Exception as e:
+        st.error(f"예측 중 오류가 발생했습니다: {e}")
+        return
+
+    churn_count = int(result_df["prediction"].sum())
+    total = len(result_df)
+    retain_count = total - churn_count
+    avg_prob = float(result_df["churn_probability"].mean()) * 100
+
+    # 3) 요약 지표
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("전체 고객", f"{total:,}명")
+    m2.metric("이탈 위험", f"{churn_count:,}명")
+    m3.metric("잔류 예상", f"{retain_count:,}명")
+    m4.metric("평균 이탈 확률", f"{avg_prob:.1f}%")
+
+    st.markdown("### 📊 예측 결과 시각화")
+    viz_col1, viz_col2 = st.columns(2)
+
+    # 3-1) 이탈/잔류 비율 도넛 차트
+    with viz_col1:
+        donut = go.Figure(
+            data=[go.Pie(
+                labels=["이탈 위험", "잔류 예상"],
+                values=[churn_count, retain_count],
+                hole=0.55,
+                marker=dict(colors=["#e94560", "#00c853"]),
+                textinfo="label+percent",
+            )]
+        )
+        donut.update_layout(
+            title="이탈 / 잔류 비율",
+            showlegend=False,
+            margin=dict(t=50, b=10, l=10, r=10),
+            height=350,
+        )
+        st.plotly_chart(donut, use_container_width=True)
+
+    # 3-2) 이탈 확률 분포 히스토그램
+    with viz_col2:
+        hist = px.histogram(
+            result_df,
+            x="churn_probability",
+            nbins=20,
+            title="이탈 확률 분포",
+            labels={"churn_probability": "이탈 확률"},
+            color_discrete_sequence=["#e94560"],
+        )
+        # 0.5 기준선을 표시해 이탈/잔류 경계를 한눈에 보이게 합니다.
+        hist.add_vline(x=0.5, line_dash="dash", line_color="#a8b2d8")
+        hist.update_layout(
+            margin=dict(t=50, b=10, l=10, r=10),
+            height=350,
+            yaxis_title="고객 수",
+        )
+        st.plotly_chart(hist, use_container_width=True)
+
+    # 3-3) 고위험 고객 Top N 테이블
+    st.markdown("### ⚠️ 이탈 고위험 고객 (확률 높은 순)")
+    top_n = min(20, total)
+    high_risk = (
+        result_df.sort_values("churn_probability", ascending=False)
+        .head(top_n)
+        .copy()
+    )
+    high_risk["이탈 확률(%)"] = (high_risk["churn_probability"] * 100).round(1)
+    display_cols = ["이탈 확률(%)"] + USER_INPUT_COLS
+    st.dataframe(
+        _decode_labels(high_risk[display_cols]).reset_index(drop=True).rename(columns=KOREAN_COL_NAMES),
+        use_container_width=True,
+    )
+
+    # 4) 전체 예측 결과 다운로드
+    out_df = result_df.copy()
+    # 다운로드 결과에서도 year는 제외합니다.
+    out_df = out_df.drop(columns=["year"], errors="ignore")
+    out_df["churn_probability"] = (out_df["churn_probability"] * 100).round(2)
+    out_df["retention_probability"] = (out_df["retention_probability"] * 100).round(2)
+    out_df = out_df.rename(columns={
+        "churn_probability": "이탈확률(%)",
+        "retention_probability": "잔류확률(%)",
+        "prediction": "이탈여부(1=이탈)",
+    })
+    st.download_button(
+        "📥 전체 예측 결과 다운로드 (CSV)",
+        data=out_df.to_csv(index=False).encode("utf-8-sig"),
+        file_name="telecom_churn_predictions.csv",
+        mime="text/csv",
+        key="batch_result_download",
+    )

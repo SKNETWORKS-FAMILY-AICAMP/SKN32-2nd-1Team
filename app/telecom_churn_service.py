@@ -118,3 +118,65 @@ def predict_churn_pipeline(values: Dict[str, object]) -> Dict[str, object]:
         "churn_probability": churn_probability,
         "retention_probability": float(probabilities[0]),
     }
+
+
+# -------------------------------------------------------
+# 다수 고객 배치 예측 (CSV / XLSX 업로드용)
+# -------------------------------------------------------
+
+# 업로드 파일에 반드시 있어야 하는 원본 입력 컬럼(파생변수 제외).
+# 화면 단일 예측에서 input_values로 넘기던 키와 동일합니다.
+PIPELINE_RAW_INPUT_COLS = [
+    "year", "age", "gender", "income", "school", "area",
+    "household_size", "job", "marriage", "provider",
+    "monthly_total_cost", "monthly_installment", "cost_payer",
+    "is_mobile_bundled",
+]
+
+
+def make_pipeline_input_dataframe_batch(df: pd.DataFrame) -> pd.DataFrame:
+    """여러 행이 든 DataFrame에 파생변수를 벡터 연산으로 한 번에 계산합니다.
+
+    단일 예측용 make_pipeline_input_dataframe와 계산식이 동일하며,
+    행 단위 반복 대신 컬럼 전체 연산으로 처리합니다.
+    """
+    df = df.copy()
+
+    df["installment_ratio"] = df["monthly_installment"] / (df["monthly_total_cost"] + 1)
+    df["cost_income_ratio"] = df["monthly_total_cost"] / (df["income"] + 1)
+    df["income_per_person"] = df["income"] / df["household_size"]
+    df["cost_per_person"] = df["monthly_total_cost"] / df["household_size"]
+    df["married_large_family"] = (
+        (df["marriage"] == 2) & (df["household_size"] >= 3)
+    ).astype(int)
+
+    return df[PIPELINE_FEATURE_COLS]
+
+
+def predict_churn_pipeline_batch(raw_df: pd.DataFrame) -> pd.DataFrame:
+    """원본 입력 컬럼이 든 DataFrame을 받아 행마다 이탈 예측을 수행합니다.
+
+    반환값은 입력 원본 컬럼 + 다음 3개 컬럼이 추가된 DataFrame입니다.
+        - churn_probability: 이탈 확률 (0~1)
+        - retention_probability: 잔류 확률 (0~1)
+        - prediction: 이탈 여부 (1=이탈 위험, 0=잔류)
+    """
+    missing = [c for c in PIPELINE_RAW_INPUT_COLS if c not in raw_df.columns]
+    if missing:
+        raise ValueError(f"업로드 파일에 다음 컬럼이 없습니다: {missing}")
+
+    if len(raw_df) == 0:
+        raise ValueError("업로드 파일에 데이터 행이 없습니다.")
+
+    model = load_pipeline_model()
+    input_df = make_pipeline_input_dataframe_batch(raw_df)
+
+    probabilities = model.predict_proba(input_df)
+    churn_probs = probabilities[:, 1]
+
+    result = raw_df.copy().reset_index(drop=True)
+    result["churn_probability"] = churn_probs
+    result["retention_probability"] = probabilities[:, 0]
+    result["prediction"] = (churn_probs >= 0.5).astype(int)
+
+    return result

@@ -1,8 +1,5 @@
 """Streamlit + OpenCV + InsightFace 얼굴 로그인 + 고객 이탈 예측 메인 앱입니다."""
 
-# OpenCV는 얼굴 사각형 표시 이미지의 색상 변환에 사용합니다.
-import cv2
-
 # pandas는 프로젝트 개요 화면의 컬럼 설명 표를 만드는 데 사용합니다.
 import pandas as pd
 
@@ -12,20 +9,15 @@ import streamlit as st
 # DB 초기화와 아이디/암호 확인 함수를 가져옵니다.
 from app.db import init_db, verify_user_password
 
-# 얼굴 등록, 얼굴 검출 표시, 얼굴 2차 인증 함수를 가져옵니다.
-from app.face_auth import (
-    DEFAULT_SIMILARITY_THRESHOLD,
-    draw_face_box,
-    read_camera_image,
-    register_face,
-    verify_face_for_user,
-)
-
 # 고객 이탈 예측 함수를 가져옵니다.
 from app.churn_service import predict_churn
 
-# 세션 초기화, 로그아웃, 2차 인증 대기 초기화 함수를 가져옵니다.
-from app.ui import init_session_state, logout, reset_pending_face_auth
+# 세션 초기화, 로그아웃 함수를 가져옵니다.
+from app.ui import init_session_state, logout
+
+# 회원가입 / 로그인 화면을 가져옵니다.
+from view.register import render_register
+from view.login import render_login
 
 
 # Streamlit 페이지 제목, 아이콘, 화면 폭을 설정합니다.
@@ -36,13 +28,13 @@ st.set_page_config(page_title="Face Login + Churn Prediction", page_icon="🔐",
 # 테스트할 때 매번 얼굴 등록/인증하기 귀찮을 때 True로 바꾸면 자동 로그인됩니다.
 # 실제 발표/제출 전에는 반드시 False로 바꿔야 합니다!
 # ============================================
-DEV_SKIP_LOGIN = True
+DEV_SKIP_LOGIN = False
 
 # 앱 시작 시 세션 상태를 초기화합니다.
 init_session_state()
 
 if "auth_step" not in st.session_state:
-    st.session_state.auth_step = "register"
+    st.session_state.auth_step = "login"
 
 if DEV_SKIP_LOGIN and not st.session_state.logged_in:
     st.session_state.logged_in = True
@@ -124,144 +116,10 @@ with st.sidebar:
 
 # 로그인 전에는 얼굴 등록과 로그인 탭을 제공합니다.
 if not st.session_state.logged_in:
-    # 얼굴 등록 탭과 로그인 탭을 생성합니다.
-    # 얼굴 등록 화면
     if st.session_state.auth_step == "register":
-        # 등록 섹션 제목을 출력합니다.
-        st.subheader("회원 정보 + 얼굴 등록")
-
-        # 사용자 ID를 입력받습니다.
-        register_user_id = st.text_input("아이디", placeholder="예: user01", key="register_user_id")
-
-        # 비밀번호를 입력받습니다. type=password는 화면에 비밀번호를 숨겨 표시합니다.
-        register_password = st.text_input("암호", type="password", key="register_password")
-
-        # 사용자 이름을 입력받습니다.
-        register_name = st.text_input("이름", placeholder="예: 홍길동", key="register_name")
-
-        # camera_input으로 등록 얼굴을 촬영합니다. 파일 업로더는 사용하지 않습니다.
-        register_camera_file = st.camera_input("등록할 얼굴을 촬영하세요.", key="register_camera")
-
-        # 촬영 이미지가 있으면 OpenCV 이미지로 변환합니다.
-        register_image_bgr = read_camera_image(register_camera_file)
-
-        # 촬영된 얼굴에 사각형을 표시하여 얼굴 검출 여부를 확인시킵니다.
-        if register_image_bgr is not None:
-            annotated_bgr, face_found, face_message = draw_face_box(register_image_bgr)
-            annotated_rgb = cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB)
-            st.image(annotated_rgb, caption=face_message, width=420)
-            if not face_found:
-                st.warning(face_message)
-
-        # 등록 버튼을 누르면 사용자 정보와 얼굴 정보를 MySQL에 저장합니다.
-        if st.button("회원 및 얼굴 등록 실행", type="primary"):
-            # 이미지가 없으면 경고를 표시합니다.
-            if register_image_bgr is None:
-                st.warning("등록할 얼굴 이미지를 카메라로 촬영하세요.")
-            else:
-                try:
-                    # 회원 정보와 얼굴 임베딩을 등록합니다.
-                    ok, message = register_face(
-                        register_user_id,
-                        register_password,
-                        register_name,
-                        register_image_bgr,
-                    )
-
-                    # 등록 성공 시 성공 메시지를 표시합니다.
-                    if ok:
-                        st.success("회원 및 얼굴 등록이 완료되었습니다.")
-                        st.session_state.auth_step = "login"
-                        st.rerun()
-                    else:
-                        # 등록 실패 시 오류 메시지를 표시합니다.
-                        st.error(message)
-                except Exception as e:
-                    st.error("회원/얼굴 등록 중 오류가 발생했습니다.")
-                    st.exception(e)
-
-    # 로그인 화면
+        render_register()
     elif st.session_state.auth_step == "login":
-        # 로그인 섹션 제목을 출력합니다.
-        st.subheader("아이디/암호 로그인 후 얼굴 2차 인증")
-
-        # 로그인할 아이디를 입력받습니다.
-        login_user_id = st.text_input("아이디", key="login_user_id")
-
-        # 로그인할 암호를 입력받습니다.
-        login_password = st.text_input("암호", type="password", key="login_password")
-
-        # 1차 인증 버튼입니다.
-        if st.button("1차 아이디/암호 확인", type="primary"):
-            # 기존 2차 인증 대기 상태를 초기화합니다.
-            reset_pending_face_auth()
-
-            # 아이디와 암호 입력 여부를 먼저 확인합니다.
-            if not login_user_id.strip() or not login_password.strip():
-                st.warning("아이디와 암호를 모두 입력하세요.")
-            else:
-                try:
-                    # MySQL에 저장된 사용자 정보와 비밀번호 해시를 확인합니다.
-                    ok, user_name, message = verify_user_password(login_user_id.strip(), login_password)
-
-                    # 아이디/암호가 맞으면 2차 얼굴 인증 대기 상태로 전환합니다.
-                    if ok:
-                        st.session_state.pending_face_user_id = login_user_id.strip()
-                        st.session_state.pending_face_user_name = user_name
-                        st.success(message)
-                    else:
-                        st.error(message)
-                except Exception as e:
-                    st.error("아이디/암호 확인 중 오류가 발생했습니다.")
-                    st.exception(e)
-
-        # 1차 인증을 통과한 경우에만 얼굴 2차 인증 화면을 표시합니다.
-        if st.session_state.pending_face_user_id:
-            st.divider()
-            st.info(f"{st.session_state.pending_face_user_id} 계정의 얼굴 2차 인증을 진행하세요.")
-
-            # 로그인용 얼굴을 camera_input으로 촬영합니다. 파일 업로더는 사용하지 않습니다.
-            login_camera_file = st.camera_input("로그인할 얼굴을 촬영하세요.", key="login_camera")
-
-            # 촬영 이미지를 OpenCV BGR 이미지로 변환합니다.
-            login_image_bgr = read_camera_image(login_camera_file)
-
-            # 촬영된 얼굴에 사각형 테두리를 표시합니다.
-            if login_image_bgr is not None:
-                annotated_bgr, face_found, face_message = draw_face_box(login_image_bgr)
-                annotated_rgb = cv2.cvtColor(annotated_bgr, cv2.COLOR_BGR2RGB)
-                st.image(annotated_rgb, caption=face_message, width=420)
-                if not face_found:
-                    st.warning(face_message)
-
-            # 2차 얼굴 인증 버튼입니다.
-            if st.button("2차 얼굴 인증 실행", type="primary"):
-                if login_image_bgr is None:
-                    st.warning("로그인할 얼굴 이미지를 카메라로 촬영하세요.")
-                else:
-                    try:
-                        # 1차 인증을 통과한 user_id의 등록 얼굴과 현재 촬영 얼굴을 비교합니다.
-                        ok, score, message = verify_face_for_user(
-                            st.session_state.pending_face_user_id,
-                            login_image_bgr,
-                            threshold=DEFAULT_SIMILARITY_THRESHOLD,
-                        )
-
-                        # 얼굴 인증 성공 시 최종 로그인 세션을 저장합니다.
-                        if ok:
-                            st.session_state.logged_in = True
-                            st.session_state.user_id = st.session_state.pending_face_user_id
-                            st.session_state.user_name = st.session_state.pending_face_user_name
-                            st.session_state.face_score = score
-                            st.session_state.auth_step = "register"
-                            reset_pending_face_auth()
-                            st.success(f"{message} 유사도: {score:.3f}")
-                            st.rerun()
-                        else:
-                            st.error(f"{message} 유사도: {score:.3f}")
-                    except Exception as e:
-                        st.error("얼굴 2차 인증 중 오류가 발생했습니다.")
-                        st.exception(e)
+        render_login()
 
 # 로그인 후에는 메뉴에 따라 화면을 표시합니다.
 elif menu == "프로젝트 개요":
