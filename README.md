@@ -64,7 +64,7 @@ Signal-T는 얼굴 인식 기반 로그인과 머신러닝 모델을 결합한 S
 <img width="1189" height="489" alt="image" src="https://github.com/user-attachments/assets/acbb2d23-c363-4113-82f3-caf3c4639e49" />
 
 ### 나이대 X 통신사별 이탈율
-<img width="1189" height="489" alt="image" src="https://github.com/user-attachments/assets/5c6c5ca9-a5ed-4767-8511-edb56b005ea9" />
+<img width="1189" height="490" alt="image" src="https://github.com/user-attachments/assets/e80971d3-88e9-42d7-949e-79d84a75e72c" />
 
 ### 모바일 결합 여부별 이탈율
 <img width="990" height="409" alt="image" src="https://github.com/user-attachments/assets/7f8c5776-f9b8-409a-9d81-7e030d070ee7" />
@@ -102,15 +102,6 @@ Signal-T는 얼굴 인식 기반 로그인과 머신러닝 모델을 결합한 S
 | 최종 알고리즘 | LightGBM, XGBoost | 트리 기반 예측 모델 및 앙상블 실험 |
 | 데이터베이스 | MySQL | 회원 정보와 얼굴 임베딩 데이터 저장 |
 | 협업/문서화 | GitHub, Notion | 버전 관리, 일정 관리, 문서화 |
-
-## 제출물
-
-| 구분  | 제출 항목 |
-|:----| :--- |
-| 제출물 | 인공지능 데이터 전처리 결과서 |
-| 제출물 | 인공지능 학습 결과서 |
-| 제출물 | 학습된 인공지능 모델 |
-| 제출물 | 프로젝트 발표 보고서 |
 
 ## 데이터 전처리 결과서
 
