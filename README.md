@@ -81,6 +81,21 @@ SKN32-2nd-1Team/
 └── registered_faces/              # 등록된 얼굴 이미지 저장 폴더 (자동 생성)
 ```
 
+## 기술 스택
+
+| 분류 | 기술 및 도구 | 활용 목적 |
+| :--- | :--- | :--- |
+| 언어 | Python 3.10+ | 데이터 전처리, 모델링, 웹 서비스 구현 |
+| 프론트엔드 | Streamlit | 고객 이탈 위험도 스코어링 대시보드 구현 |
+| 얼굴 인증 | InsightFace, OpenCV | 얼굴 검출 및 2차 인증 체계 구축 |
+| 데이터 처리/EDA | Pandas, NumPy, Matplotlib, Seaborn | 데이터 정제, 파생 변수 생성, 시각화 |
+| 머신러닝 | Scikit-learn, Optuna, SMOTE | 베이스라인 모델링, 하이퍼파라미터 최적화, 불균형 데이터 처리 |
+| 최종 알고리즘 | LightGBM, XGBoost | 트리 기반 예측 모델 및 앙상블 실험 |
+| 데이터베이스 | MySQL | 회원 정보와 얼굴 임베딩 데이터 저장 |
+| 협업/문서화 | GitHub, Notion | 버전 관리, 일정 관리, 문서화 |
+
+
+
 ## EDA
 ### 타겟 변수 분포
 <img width="928" height="409" alt="image" src="https://github.com/user-attachments/assets/b869f701-efc5-4931-aa69-9cc416ff6554" />
@@ -114,19 +129,6 @@ SKN32-2nd-1Team/
 - Streamlit 기반 대시보드 제공
 - 이탈 확률과 위험도 결과 표시
 - 위험도에 따른 맞춤형 안내 메시지 제공
-
-## 기술 스택
-
-| 분류 | 기술 및 도구 | 활용 목적 |
-| :--- | :--- | :--- |
-| 언어 | Python 3.10+ | 데이터 전처리, 모델링, 웹 서비스 구현 |
-| 프론트엔드 | Streamlit | 고객 이탈 위험도 스코어링 대시보드 구현 |
-| 얼굴 인증 | InsightFace, OpenCV | 얼굴 검출 및 2차 인증 체계 구축 |
-| 데이터 처리/EDA | Pandas, NumPy, Matplotlib, Seaborn | 데이터 정제, 파생 변수 생성, 시각화 |
-| 머신러닝 | Scikit-learn, Optuna, SMOTE | 베이스라인 모델링, 하이퍼파라미터 최적화, 불균형 데이터 처리 |
-| 최종 알고리즘 | LightGBM, XGBoost | 트리 기반 예측 모델 및 앙상블 실험 |
-| 데이터베이스 | MySQL | 회원 정보와 얼굴 임베딩 데이터 저장 |
-| 협업/문서화 | GitHub, Notion | 버전 관리, 일정 관리, 문서화 |
 
 ## 데이터 전처리 결과서
 
