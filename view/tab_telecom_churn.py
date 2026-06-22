@@ -439,7 +439,7 @@ def render_tab_test_telecom():
 
         # ⚠️ 검증된 값: extracted_data.csv 실제 검증 결과 income은 1~8 코드값입니다.
         income = st.number_input(
-            "소득 (income, 코드값 1~8)",
+            "소득 (income, 원)",
             min_value=1, max_value=8, step=1, value=1, key="test_income",
             help="실제 학습 데이터(extracted_data.csv) 검증 결과 1~8 코드값입니다. 코드북 라벨 미확인.",
         )
