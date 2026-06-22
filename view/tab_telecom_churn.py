@@ -178,7 +178,7 @@ def render_tab_telecom():
 
     st.divider()
 
-    if st.button("이탈 예측하기", type="primary", use_container_width=True):
+    if st.button(" 🔍 이탈 여부 예측하기", type="primary", use_container_width=True):
         input_values = {
             "age": age,
             "gender": gender,
