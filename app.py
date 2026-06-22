@@ -502,6 +502,7 @@ elif menu == "개인별 이탈 예측":
             "usage_period": usage_period,
             "tablet_owned": tablet_opts[tablet_kr],
             "wearable_owned": wearable_opts[wearable_kr],
+
         }
 
         # ============================================
