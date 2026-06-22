@@ -373,18 +373,20 @@ def render_tab_test_telecom():
             key="test_provider",
         )
 
-        # ⚠️ 단위 주의: 모델 학습 데이터(extracted_data.csv)의 monthly_total_cost,
-        # monthly_installment는 "천원" 단위입니다(예: 70 = 7만원). "원" 단위가 아닙니다.
-        monthly_total_cost = st.number_input(
-            "월평균 통신비 (monthly_total_cost, 천원)",
-            min_value=0, step=5, value=0, key="test_cost",
-            help="천원 단위입니다. 예: 7만원이면 70을 입력하세요.",
+        # ⚠️ 단위 주의: 화면에서는 "원" 단위로 입력받지만(1,000원 단위로 증감),
+        # 모델 학습 데이터(extracted_data.csv)의 monthly_total_cost,
+        # monthly_installment는 "천원" 단위입니다. 아래에서 입력값을 1000으로
+        # 나누어 모델에 전달합니다 (input_values 구성 부분 참고).
+        monthly_total_cost_won = st.number_input(
+            "월평균 통신비 (원)",
+            min_value=0, step=1000, value=0, key="test_cost",
+            help="1,000원 단위로 증감합니다. 예: 70,000원을 입력하세요.",
         )
 
-        monthly_installment = st.number_input(
-            "월평균 할부금 (monthly_installment, 천원)",
-            min_value=0, step=5, value=0, key="test_installment",
-            help="천원 단위입니다. 예: 3만원이면 30을 입력하세요.",
+        monthly_installment_won = st.number_input(
+            "월평균 할부금 (원)",
+            min_value=0, step=1000, value=0, key="test_installment",
+            help="1,000원 단위로 증감합니다. 예: 30,000원을 입력하세요.",
         )
 
         cost_payer = st.selectbox(
@@ -422,8 +424,9 @@ def render_tab_test_telecom():
             "job": job,
             "marriage": marriage,
             "provider": provider,
-            "monthly_total_cost": monthly_total_cost,
-            "monthly_installment": monthly_installment,
+            # 화면은 "원" 단위로 입력받지만 모델은 "천원" 단위를 기대하므로 변환합니다.
+            "monthly_total_cost": monthly_total_cost_won // 1000,
+            "monthly_installment": monthly_installment_won // 1000,
             "cost_payer": cost_payer,
             "is_mobile_bundled": is_mobile_bundled,
         }

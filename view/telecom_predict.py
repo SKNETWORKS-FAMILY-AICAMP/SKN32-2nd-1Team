@@ -1,7 +1,15 @@
+import os
+import json
+
 import streamlit as st
 import streamlit.components.v1 as components
+import requests
 
 from app.next_provider_service import predict_next_provider
+
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "localhost")
+OLLAMA_URL = f"http://{OLLAMA_HOST}:11434/api/generate"
+OLLAMA_MODEL = "exaone3.5:2.4b"
 
 # ============================================================
 # 디자인 색상 (tab_telecom_churn.py / app.py와 동일한 톤으로 통일)
@@ -27,6 +35,86 @@ PROVIDER_COLORS = {"SKT": ACCENT, "KT": ACCENT_KT, "LG U+": ACCENT_LGU}
 # AREA_FIXED_VALUE로 고정해 모델에 전달합니다 (변수 중요도가 낮아
 # 화면 단순화를 위해 제외하기로 결정함).
 # ============================================================
+
+
+def _build_competitive_analysis_prompt(input_values: dict, result: dict, current_provider: str) -> str:
+    """이 고객 한 명의 예측 결과를 바탕으로, 현재 통신사 입장에서의
+    경쟁 대응 전략을 분석하는 프롬프트를 만듭니다.
+
+    개인 리텐션(이 사람을 어떻게 붙잡을지)이 아니라, 통신사 간 경쟁
+    포인트(요금, 결합상품 등)를 분석하도록 역할과 분석 대상을 명시합니다.
+    """
+    top_competitor = max(
+        (name for name in result if name != current_provider),
+        key=lambda name: result[name],
+    )
+    top_competitor_prob = result[top_competitor] * 100
+
+    age_label = {
+        1: "만 10세 미만", 2: "19세 미만", 3: "29세 미만", 4: "39세 미만",
+        5: "49세 미만", 6: "59세 미만", 7: "69세 미만", 8: "70세 이상",
+    }.get(input_values["age"], str(input_values["age"]))
+
+    income_label = {
+        1: "소득 없음", 2: "50만원 미만", 3: "100만원 미만", 4: "200만원 미만",
+        5: "300만원 미만", 6: "400만원 미만", 7: "500만원 미만", 8: "500만원 이상",
+    }.get(input_values["income"], str(input_values["income"]))
+
+    bundled_label = {1: "가입", 2: "미가입"}.get(input_values["is_mobile_bundled"], "미확인")
+
+    probs_text = ", ".join(f"{name} {prob*100:.1f}%" for name, prob in result.items())
+
+    return f"""당신은 통신 3사 경쟁 전략을 분석하는 시장 분석 전문가입니다.
+아래는 머신러닝 모델이 예측한 한 고객의 통신사 이동 가능성 데이터입니다.
+분석 대상은 이 개별 고객이 아니라 현재 통신사({current_provider})이며,
+"이 고객을 어떻게 붙잡을지"가 아니라 "{current_provider}가 경쟁사인
+{top_competitor} 대비 시장에서 어떤 위치에 있고 어떤 전략을 취해야
+하는지"를 분석해야 합니다.
+
+[고객 이동 가능성 예측]
+- 현재 가입 통신사: {current_provider}
+- 통신사별 이동 확률: {probs_text}
+- 가장 위협적인 경쟁사: {top_competitor} (이동 확률 {top_competitor_prob:.1f}%)
+
+[참고 데이터: 이 고객의 이용 패턴]
+- 연령대: {age_label}
+- 소득 수준: {income_label}
+- 월평균 통신비: {input_values["monthly_total_cost"]*1000:,.0f}원
+- 월평균 할부금: {input_values["monthly_installment"]*1000:,.0f}원
+- 결합할인 여부: {bundled_label}
+- 가입 후 관측 연수: {input_values["tenure"]}년
+- 과거 누적 통신사 변경 횟수: {input_values["total_changes"]}회
+
+위 데이터를 바탕으로 다음을 분석해주세요:
+1. {current_provider} 고객이 {top_competitor}로 이동할 가능성이 높게 나온 원인으로
+   추정되는 요소 (요금, 결합상품, 가입 기간 등 데이터 근거 기반)
+2. {top_competitor}가 {current_provider} 대비 시장에서 갖는 경쟁 우위 지점은 무엇인지
+3. {current_provider}가 이 같은 고객층의 이동을 줄이기 위해 취할 수 있는
+   기업 차원의 전략 2~3가지 (개별 고객 리텐션이 아니라 요금 정책, 결합상품 설계,
+   마케팅 등 기업 전략 관점)
+
+한국어로 간결하게 답변해주세요."""
+
+
+def _stream_ollama(prompt: str):
+    try:
+        resp = requests.post(
+            OLLAMA_URL,
+            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": True},
+            stream=True,
+            timeout=120,
+        )
+        resp.raise_for_status()
+        for line in resp.iter_lines():
+            if line:
+                chunk = json.loads(line)
+                yield chunk.get("response", "")
+                if chunk.get("done"):
+                    break
+    except requests.exceptions.ConnectionError:
+        yield "Ollama 서버에 연결할 수 없습니다. Docker 컨테이너가 실행 중인지 확인해주세요."
+    except Exception as e:
+        yield f"오류가 발생했습니다: {e}"
 
 
 def _render_header(title: str, subtitle: str, height: int = 130) -> None:
@@ -129,9 +217,9 @@ def render_tab_next_provider():
 
     col1, col2, col3 = st.columns(3)
 
-    # 컬럼 1: 인적 사항
+    # 컬럼 1: 고객 기본 정보
     with col1:
-        st.markdown('<p class="block-title">인적 사항</p>', unsafe_allow_html=True)
+        st.markdown('<p class="block-title">고객 기본 정보</p>', unsafe_allow_html=True)
 
         age = st.selectbox(
             "나이 (age)",
@@ -143,50 +231,14 @@ def render_tab_next_provider():
             key="next_age",
         )
 
-        gender = st.selectbox(
-            "성별 (gender)",
-            options=[1, 2],
-            format_func=lambda x: {1: "남", 2: "여"}[x],
-            key="next_gender",
-        )
-
-        school = st.selectbox(
-            "학력 (school)",
-            options=[1, 2, 3, 4, 5, 6],
+        income = st.selectbox(
+            "소득 (income)",
+            options=[1, 2, 3, 4, 5, 6, 7, 8],
             format_func=lambda x: {
-                1: "초등학교", 2: "중학교", 3: "중졸이하",
-                4: "고졸이하", 5: "대졸이하", 6: "대학원 재학 이상",
+                1: "소득 없음", 2: "50만원 미만", 3: "100만원 미만", 4: "200만원 미만",
+                5: "300만원 미만", 6: "400만원 미만", 7: "500만원 미만", 8: "500만원 이상",
             }[x],
-            key="next_school",
-        )
-
-        marriage = st.selectbox(
-            "결혼여부 (marriage)",
-            options=[1, 2, 3, 4],
-            format_func=lambda x: {1: "미혼", 2: "기혼", 3: "사별", 4: "이혼"}[x],
-            key="next_marriage",
-        )
-
-    # 컬럼 2: 가구 및 소득
-    with col2:
-        st.markdown('<p class="block-title">가구 및 소득</p>', unsafe_allow_html=True)
-
-        income = st.number_input(
-            "소득 (income, 코드값 1~8)",
-            min_value=1, max_value=8, step=1, value=1, key="next_income",
-            help="1=소득없음 ~ 8=500만원이상",
-        )
-
-        household_size = st.number_input(
-            "가구원수 (household_size, 코드값 1~3)",
-            min_value=1, max_value=3, step=1, value=1, key="next_household_size",
-        )
-
-        job = st.selectbox(
-            "직업유무 (job)",
-            options=[1, 2],
-            format_func=lambda x: {1: "예", 2: "아니오"}[x],
-            key="next_job",
+            key="next_income",
         )
 
         tenure = st.number_input(
@@ -195,9 +247,9 @@ def render_tab_next_provider():
             help="이 통신사를 사용한 지 몇 번째 조사 연도인지 입력하세요.",
         )
 
-    # 컬럼 3: 통신 서비스 및 비용
-    with col3:
-        st.markdown('<p class="block-title">통신 서비스 및 비용</p>', unsafe_allow_html=True)
+    # 컬럼 2: 현재 이용 현황
+    with col2:
+        st.markdown('<p class="block-title">현재 이용 현황</p>', unsafe_allow_html=True)
 
         provider = st.selectbox(
             "현재 가입 통신사 (provider)",
@@ -205,33 +257,6 @@ def render_tab_next_provider():
             format_func=lambda x: {1: "SKT", 2: "KT", 3: "LG U+"}[x],
             key="next_provider_current",
             help="이 모델은 SKT/KT/LG U+ 3사 간 이동만 예측합니다.",
-        )
-
-        monthly_total_cost = st.number_input(
-            "현재 월평균 통신비 (천원)",
-            min_value=0, step=5, value=50, key="next_cost",
-            help="천원 단위입니다. 예: 7만원이면 70을 입력하세요.",
-        )
-
-        prev_monthly_total_cost = st.number_input(
-            "이전 조사 시점 월평균 통신비 (천원)",
-            min_value=0, step=5, value=50, key="next_prev_cost",
-            help="전년도(또는 이전 조사 시점) 통신비입니다. 변화율 계산에 사용됩니다.",
-        )
-
-        monthly_installment = st.number_input(
-            "월평균 할부금 (천원)",
-            min_value=0, step=5, value=0, key="next_installment",
-        )
-
-        cost_payer = st.selectbox(
-            "요금 부담자 (cost_payer)",
-            options=[1, 2, 3, 4, 5, 6],
-            format_func=lambda x: {
-                1: "본인", 2: "회사가 전액부담", 3: "회사가 일부지원",
-                4: "가족이나 타인이 전액부담", 5: "가족이나 타인이 일부부담", 6: "기타",
-            }[x],
-            key="next_cost_payer",
         )
 
         is_mobile_bundled = st.selectbox(
@@ -246,30 +271,72 @@ def render_tab_next_provider():
             min_value=0, max_value=10, step=1, value=1, key="next_total_changes",
         )
 
+    # 컬럼 3: 통신 비용
+    with col3:
+        st.markdown('<p class="block-title">통신 비용</p>', unsafe_allow_html=True)
+
+        # ⚠️ 단위 주의: 화면에서는 "원" 단위로 입력받지만(1,000원 단위로 증감),
+        # 모델은 "천원" 단위를 기대하므로 input_values 구성 시 1000으로 나눕니다.
+        monthly_total_cost_won = st.number_input(
+            "현재 월평균 통신비 (원)",
+            min_value=0, step=1000, value=0, key="next_cost",
+            help="1,000원 단위로 증감합니다. 예: 70,000원을 입력하세요.",
+        )
+
+        prev_monthly_total_cost_won = st.number_input(
+            "이전 조사 시점 월평균 통신비 (원)",
+            min_value=0, step=1000, value=0, key="next_prev_cost",
+            help="전년도(또는 이전 조사 시점) 통신비입니다. 변화율 계산에 사용됩니다.",
+        )
+
+        monthly_installment_won = st.number_input(
+            "월평균 할부금 (원)",
+            min_value=0, step=1000, value=0, key="next_installment",
+            help="1,000원 단위로 증감합니다. 예: 30,000원을 입력하세요.",
+        )
+
     st.markdown("---")
 
     if st.button("🔀 차기 통신사 예측하기", type="primary", use_container_width=True, key="next_predict_btn"):
         input_values = {
             "age": age,
-            "gender": gender,
             "income": income,
-            "school": school,
-            "job": job,
-            "marriage": marriage,
-            "monthly_total_cost": monthly_total_cost,
-            "monthly_installment": monthly_installment,
-            "cost_payer": cost_payer,
+            # 화면은 "원" 단위로 입력받지만 모델은 "천원" 단위를 기대하므로 변환합니다.
+            "monthly_total_cost": monthly_total_cost_won // 1000,
+            "monthly_installment": monthly_installment_won // 1000,
             "provider": provider,
-            "household_size": household_size,
             "is_mobile_bundled": is_mobile_bundled,
             "total_changes": total_changes,
-            "prev_monthly_total_cost": prev_monthly_total_cost,
+            "prev_monthly_total_cost": prev_monthly_total_cost_won // 1000,
             "tenure": tenure,
         }
 
         try:
             result = predict_next_provider(input_values)
-            st.markdown('<p class="block-title">예측 결과</p>', unsafe_allow_html=True)
-            _render_next_provider_result(result)
+
+            # AI 분석 버튼을 눌러 화면이 다시 실행되어도 결과가 사라지지 않도록
+            # 세션에 저장합니다. 아래 렌더링 블록은 이 값을 보고 항상 그립니다.
+            current_provider_name = {1: "SKT", 2: "KT", 3: "LG U+"}[provider]
+            st.session_state["next_predict_input_values"] = input_values
+            st.session_state["next_predict_result"] = result
+            st.session_state["next_predict_current_provider"] = current_provider_name
         except Exception as e:
             st.error(f"예측 중 오류가 발생했습니다: {e}")
+
+    # 예측 결과가 세션에 있으면 항상 그립니다. (AI 분석 버튼을 눌러 화면이
+    # 다시 실행되어도 "차기 통신사 예측하기" 버튼은 다시 눌리지 않으므로,
+    # 위 if 블록 밖에서 세션 값을 기준으로 그려야 결과가 사라지지 않습니다.)
+    if "next_predict_result" in st.session_state:
+        st.markdown('<p class="block-title">예측 결과</p>', unsafe_allow_html=True)
+        _render_next_provider_result(st.session_state["next_predict_result"])
+
+        st.markdown("---")
+        st.markdown('<p class="block-title">🤖 AI 경쟁 전략 분석 (EXAONE 3.5)</p>', unsafe_allow_html=True)
+        if st.button("경쟁사 대비 전략 AI 분석 요청", type="primary", use_container_width=True, key="next_ai_analyze_btn"):
+            prompt = _build_competitive_analysis_prompt(
+                st.session_state["next_predict_input_values"],
+                st.session_state["next_predict_result"],
+                st.session_state["next_predict_current_provider"],
+            )
+            with st.spinner("EXAONE이 분석 중입니다..."):
+                st.write_stream(_stream_ollama(prompt))
