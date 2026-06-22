@@ -10,6 +10,81 @@ from app.telecom_churn_service import (
     PIPELINE_RAW_INPUT_COLS,
 )
 import io
+import os
+import requests
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "localhost")
+
+OLLAMA_URL = f"http://{OLLAMA_HOST}:11434/api/generate"
+OLLAMA_MODEL = "exaone3.5:2.4b"
+
+def _build_analysis_prompt(result_df: pd.DataFrame) -> str:
+    total = len(result_df)
+    churn_df = result_df[result_df["prediction"] == 1]
+    churn_count = len(churn_df)
+    avg_prob = result_df["churn_probability"].mean() * 100
+
+    age_map = VALUE_LABEL_MAP["age"]
+    gender_map = VALUE_LABEL_MAP["gender"]
+    provider_map = VALUE_LABEL_MAP["provider"]
+    marriage_map = VALUE_LABEL_MAP["marriage"]
+
+    age_dist = churn_df["age"].map(age_map).value_counts().to_dict()
+    gender_dist = churn_df["gender"].map(gender_map).value_counts().to_dict()
+    provider_dist = churn_df["provider"].map(provider_map).value_counts().to_dict()
+    marriage_dist = churn_df["marriage"].map(marriage_map).value_counts().to_dict()
+    bundled_dist = churn_df["is_mobile_bundled"].map({0: "미가입", 1: "가입"}).value_counts().to_dict()
+    avg_cost = churn_df["monthly_total_cost"].mean()
+    avg_installment = churn_df["monthly_installment"].mean()
+
+    def fmt_dict(d):
+        return ", ".join(f"{k} {v}명" for k, v in d.items())
+
+    return f"""당신은 통신사 고객 이탈 분석 전문가입니다.
+아래는 머신러닝 모델이 예측한 고객 이탈 위험 분석 결과입니다.
+
+[전체 분석 요약]
+- 전체 고객 수: {total}명
+- 이탈 위험 고객: {churn_count}명 ({churn_count/total*100:.1f}%)
+- 평균 이탈 확률: {avg_prob:.1f}%
+
+[이탈 위험 고객 특징]
+- 연령대 분포: {fmt_dict(age_dist)}
+- 성별 분포: {fmt_dict(gender_dist)}
+- 이동통신사: {fmt_dict(provider_dist)}
+- 결혼 여부: {fmt_dict(marriage_dist)}
+- 결합할인 여부: {fmt_dict(bundled_dist)}
+- 평균 월 통신비: {avg_cost:,.0f}원
+- 평균 월 할부금: {avg_installment:,.0f}원
+
+위 데이터를 바탕으로 다음을 분석해주세요:
+1. 이탈 위험 고객의 주요 공통 특징
+2. 이탈 원인으로 추정되는 요소
+3. 고객 유지를 위한 실질적인 리텐션 전략 2~3가지
+
+한국어로 간결하게 답변해주세요."""
+
+
+def _stream_ollama(prompt: str):
+    try:
+        resp = requests.post(
+            OLLAMA_URL,
+            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": True},
+            stream=True,
+            timeout=120,
+        )
+        resp.raise_for_status()
+        for line in resp.iter_lines():
+            if line:
+                import json
+                chunk = json.loads(line)
+                yield chunk.get("response", "")
+                if chunk.get("done"):
+                    break
+    except requests.exceptions.ConnectionError:
+        yield "Ollama 서버에 연결할 수 없습니다. Docker 컨테이너가 실행 중인지 확인해주세요."
+    except Exception as e:
+        yield f"오류가 발생했습니다: {e}"
+
 
 KOREAN_COL_NAMES = {
     "year":                "조사연도",
@@ -624,3 +699,10 @@ def render_batch_prediction():
         mime="text/csv",
         key="batch_result_download",
     )
+
+    st.divider()
+    st.markdown("### 🤖 AI 분석 (EXAONE 3.5)")
+    if st.button("이탈 고위험 고객 AI 분석 요청", type="primary", use_container_width=True, key="ai_analyze_btn"):
+        prompt = _build_analysis_prompt(result_df)
+        with st.spinner("EXAONE이 분석 중입니다..."):
+            st.write_stream(_stream_ollama(prompt))
