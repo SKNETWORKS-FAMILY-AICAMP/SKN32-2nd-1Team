@@ -140,14 +140,28 @@ SKN32-2nd-1Team/
 
 | 분류 | 기술 및 도구 | 활용 목적 |
 | :--- | :--- | :--- |
-| 언어 | Python 3.10+ | 데이터 전처리, 모델링, 웹 서비스 구현 |
+| 언어 | Python 3.11+ | 데이터 전처리, 모델링, 웹 서비스 구현 |
 | 프론트엔드 | Streamlit | 고객 이탈 위험도 스코어링 대시보드 구현 |
-| 얼굴 인증 | InsightFace, OpenCV | 얼굴 검출 및 2차 인증 체계 구축 |
-| 데이터 처리/EDA | Pandas, NumPy, Matplotlib, Seaborn | 데이터 정제, 파생 변수 생성, 시각화 |
-| 머신러닝 | Scikit-learn, Optuna, SMOTE | 베이스라인 모델링, 하이퍼파라미터 최적화, 불균형 데이터 처리 |
+| 얼굴 인증 | InsightFace, OpenCV, ONNX Runtime, Pillow | 얼굴 검출, 임베딩 추출, 이미지 처리, 2차 인증 체계 구축 |
+| 데이터 처리/EDA | Pandas, NumPy, Matplotlib, Seaborn, Plotly | 데이터 정제, 파생 변수 생성, 시각화 |
+| 머신러닝 | Scikit-learn, Joblib | 모델 학습, 전처리 파이프라인 구성, 모델 저장 및 로딩 |
 | 최종 알고리즘 | LightGBM, XGBoost | 트리 기반 예측 모델 및 앙상블 실험 |
-| 데이터베이스 | MySQL | 회원 정보와 얼굴 임베딩 데이터 저장 |
+| 데이터베이스 | MySQL, mysql-connector-python | 회원 정보와 얼굴 임베딩 데이터 저장 |
 | 협업/문서화 | GitHub, Notion | 버전 관리, 일정 관리, 문서화 |
+
+### 주요 Python 패키지
+
+`requirements.txt` 기준 설치 패키지는 다음과 같습니다.
+
+| 분류 | 패키지 |
+| :--- | :--- |
+| 얼굴 로그인 및 인증 | `opencv-python`, `insightface`, `onnxruntime`, `Pillow` |
+| 웹 애플리케이션 | `streamlit` |
+| 데이터베이스 | `mysql-connector-python` |
+| 데이터 처리 | `numpy`, `pandas` |
+| 모델 학습/추론 | `scikit-learn`, `joblib`, `xgboost`, `lightgbm` |
+| 시각화 | `plotly`, `seaborn`, `matplotlib` |
+| 날짜/시간 처리 | `python-dateutil`, `pytz` |
 
 
 
