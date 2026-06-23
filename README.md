@@ -11,7 +11,6 @@ Signal-T는 얼굴 인식 기반 로그인과 머신러닝 모델을 결합한 S
 - [프로젝트 개요](#프로젝트-개요)
 - [프로젝트 구조](#프로젝트-구조)
 - [기술 스택](#기술-스택)
-  - [주요 Python 패키지](#주요-python-패키지)
 - [EDA](#eda)
 - [주요 기능](#주요-기능)
 - [데이터 전처리 결과서](#데이터-전처리-결과서)
@@ -21,10 +20,7 @@ Signal-T는 얼굴 인식 기반 로그인과 머신러닝 모델을 결합한 S
   - [모델 아티팩트 목록](#모델-아티팩트-목록)
   - [이탈 예측 모델 구조](#이탈-예측-모델-구조)
   - [다음 통신사 예측 모델 구조](#다음-통신사-예측-모델-구조)
-- [설치 및 실행](#설치-및-실행)
-- [개발 모드](#개발-모드)
 - [사용 방법](#사용-방법)
-- [모델 교체 방법](#모델-교체-방법)
 - [향후 개선 계획](#향후-개선-계획)
 
 ## 팀 소개
@@ -146,30 +142,16 @@ SKN32-2nd-1Team/
 
 ## 기술 스택
 
-| 분류 | 기술 및 도구 | 활용 목적 |
-| :--- | :--- | :--- |
-| 언어 | Python 3.11+ | 데이터 전처리, 모델링, 웹 서비스 구현 |
-| 프론트엔드 | Streamlit | 고객 이탈 위험도 스코어링 대시보드 구현 |
-| 얼굴 인증 | InsightFace, OpenCV, ONNX Runtime, Pillow | 얼굴 검출, 임베딩 추출, 이미지 처리, 2차 인증 체계 구축 |
-| 데이터 처리/EDA | Pandas, NumPy, Matplotlib, Seaborn, Plotly | 데이터 정제, 파생 변수 생성, 시각화 |
-| 머신러닝 | Scikit-learn, Joblib | 모델 학습, 전처리 파이프라인 구성, 모델 저장 및 로딩 |
-| 최종 알고리즘 | LightGBM, XGBoost | 트리 기반 예측 모델 및 앙상블 실험 |
-| 데이터베이스 | MySQL, mysql-connector-python | 회원 정보와 얼굴 임베딩 데이터 저장 |
-| 협업/문서화 | GitHub, Notion | 버전 관리, 일정 관리, 문서화 |
-
-### 주요 Python 패키지
-
-`requirements.txt` 기준 설치 패키지는 다음과 같습니다.
-
-| 분류 | 패키지 |
-| :--- | :--- |
-| 얼굴 로그인 및 인증 | `opencv-python`, `insightface`, `onnxruntime`, `Pillow` |
-| 웹 애플리케이션 | `streamlit` |
-| 데이터베이스 | `mysql-connector-python` |
-| 데이터 처리 | `numpy`, `pandas` |
-| 모델 학습/추론 | `scikit-learn`, `joblib`, `xgboost`, `lightgbm` |
-| 시각화 | `plotly`, `seaborn`, `matplotlib` |
-| 날짜/시간 처리 | `python-dateutil`, `pytz` |
+| 분류 | 기술 및 도구 | 주요 패키지 | 활용 목적 |
+| :--- | :--- | :--- | :--- |
+| 언어 | Python 3.11+ | `python-dateutil`, `pytz` | 데이터 전처리, 모델링, 웹 서비스 구현 |
+| 프론트엔드 | Streamlit | `streamlit` | 고객 이탈 위험도 스코어링 대시보드 구현 |
+| 얼굴 인증 | InsightFace, OpenCV, ONNX Runtime, Pillow | `insightface`, `opencv-python`, `onnxruntime`, `Pillow` | 얼굴 검출, 임베딩 추출, 이미지 처리, 2차 인증 체계 구축 |
+| 데이터 처리/EDA | Pandas, NumPy, Matplotlib, Seaborn, Plotly | `pandas`, `numpy`, `matplotlib`, `seaborn`, `plotly` | 데이터 정제, 파생 변수 생성, 시각화 |
+| 머신러닝 | Scikit-learn, Joblib | `scikit-learn`, `joblib` | 모델 학습, 전처리 파이프라인 구성, 모델 저장 및 로딩 |
+| 최종 알고리즘 | LightGBM, XGBoost | `lightgbm`, `xgboost` | 트리 기반 예측 모델 및 앙상블 실험 |
+| 데이터베이스 | MySQL, mysql-connector-python | `mysql-connector-python` | 회원 정보와 얼굴 임베딩 데이터 저장 |
+| 협업/문서화 | GitHub, Notion | - | 버전 관리, 일정 관리, 문서화 |
 
 
 
@@ -375,69 +357,6 @@ SKN32-2nd-1Team/
   -> 현재 가입사는 0%로 강제 처리하고 나머지 통신사 확률을 카드 UI에 표시
 ```
 
-## 설치 및 실행
-
-### 요구 사항
-
-- Python 3.11 이상
-- MySQL 서버
-- pip
-
-### 1. 가상환경 생성 및 활성화
-
-```bash
-py -3.11 -m venv .venv
-.venv\Scripts\activate
-```
-
-### 2. 패키지 설치
-
-```bash
-pip install -r requirements.txt
-```
-
-Windows 환경에서 얼굴 인식 관련 패키지 설치 중 `dlib` 빌드 오류가 발생하면 아래 명령을 참고합니다.
-
-```bash
-pip uninstall dlib face_recognition -y
-pip install dlib-bin
-pip install face_recognition --no-deps
-pip install git+https://github.com/ageitgey/face_recognition_models
-```
-
-현재 프로젝트는 `face_recognition` 대신 InsightFace를 사용하므로, 위 내용은 향후 라이브러리 변경 시 참고용입니다.
-
-### 3. MySQL 접속 정보 설정
-
-`app/db.py`에서 본인의 MySQL 비밀번호를 환경에 맞게 설정합니다.
-
-'''python
-DB_PASSWORD = os.getenv("MYSQL_PASSWORD", "본인의 MySQL 비밀번호")
-'''
-
-비밀번호를 모르거나 접속이 실패하는 경우 MySQL Workbench에서 먼저 접속 테스트를 진행하는 것을 권장합니다.
-
-### 4. 앱 실행
-
-```bash
-streamlit run app.py
-```
-
-실행 후 브라우저에서 `http://localhost:8501`로 접속합니다.
-
-## 개발 모드
-
-로그인과 얼굴 인증 과정을 건너뛰고 이탈 예측 화면만 테스트하려면 `app.py` 상단의 개발 모드 값을 변경합니다.
-
-```python
-DEV_SKIP_LOGIN = True   # 개발 중 로그인 자동 통과
-DEV_SKIP_LOGIN = False  # 발표/제출 전 권장 설정
-```
-
-`True`로 설정하면 사이드바에 개발 모드 경고가 표시되며, 로그인 없이 예측 화면을 확인할 수 있습니다.
-
-> 발표 또는 제출 전에는 반드시 `False`로 되돌려야 합니다.
-
 ## 사용 방법
 
 1. **회원 등록**
@@ -451,12 +370,6 @@ DEV_SKIP_LOGIN = False  # 발표/제출 전 권장 설정
 
 4. **이탈 예측 실행**
    - 예측 버튼을 클릭해 이탈 확률, 위험도 등급, 권장 대응 전략을 확인합니다.
-
-## 모델 교체 방법
-
-기본 모델은 `models/` 디렉터리의 joblib 파일을 기준으로 로딩됩니다. 새 모델을 적용하려면 기존 모델과 동일한 입력 컬럼을 사용하도록 학습한 뒤, 동일한 파일명으로 `models/` 디렉터리에 배치합니다.
-
-입력 컬럼명이 달라지는 경우에는 `app.py`의 입력값 처리 로직과 모델 추론 코드도 함께 수정해야 합니다.
 
 ## 향후 개선 계획
 
