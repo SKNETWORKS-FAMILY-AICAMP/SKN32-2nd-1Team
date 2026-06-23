@@ -43,42 +43,53 @@ Signal-T는 얼굴 인식 기반 로그인과 머신러닝 모델을 결합한 S
 
 ## 프로젝트 구조
 
-```text
-SKN32-2nd-1Team/
-├── app.py                         # 메인 실행 파일 (로그인 + 이탈 예측 화면 진입점)
-├── tab_telecom_churn.py                  # 이탈 예측 UI 뷰 컴포넌트
-├── config.toml                    # Streamlit 테마 설정
-├── requirements.txt               # Python 의존성 목록
-├── README.md
-├── app/                           # 핵심 비즈니스 로직 패키지
+'''text
+telecom-churn-project/
+├── app.py                      # 메인 실행 파일 (Streamlit 진입점)
+├── tab_telecom_churn.py        # 이탈 예측 UI 뷰 컴포넌트
+├── config.toml                 # Streamlit 테마 설정
+├── requirements.txt            # Python 의존성 목록
+├── README.md                   # 프로젝트 설명 및 실행 가이드
+│
+├── app/                        # 핵심 비즈니스 로직
 │   ├── __init__.py
-│   ├── db.py                      # MySQL 연결 및 회원 정보 관리
-│   ├── face_auth.py               # 얼굴 검출, 등록, 로그인 인증 (InsightFace)
-│   ├── churn_service.py           # 이탈 예측 모델 로딩 및 추론
-│   ├── telecom_churn_service.py   # 통신 고객 이탈 예측 서비스 로직
-│   └── ui.py                      # 로그인 세션 및 UI 상태 관리
-├── view/                          # 화면 단위 뷰 모듈
-│   ├── login.py                   # 로그인 화면
-│   ├── register.py                # 회원 등록 화면
-│   └── tab_telecom_churn.py       # 이탈 예측 탭 화면
-├── data/                          # 데이터 및 분석 노트북
-│   ├── data.md                    # 데이터셋 설명 문서
-│   ├── churn_modeling.ipynb       # 이탈 예측 모델링 노트북
-│   ├── dataset.ipynb              # 데이터셋 탐색 노트북
-│   ├── dataset_setting_model.ipynb # 데이터셋 구성 및 모델 셋업
-│   ├── model.ipynb                # 모델 실험 노트북
-│   └── preprocess.ipynb           # 전처리 노트북
-├── models/                        # 학습된 모델 아티팩트
-│   ├── churn_model.joblib         # 베이스 LightGBM 모델
-│   ├── lgb_churn_model.joblib     # LightGBM 단일 모델
-│   ├── xgb_churn_model.joblib     # XGBoost 단일 모델
-│   ├── xgb_model.joblib           # XGBoost 보조 모델
-│   ├── xgb_pipeline.joblib        # XGBoost + 전처리 파이프라인
-│   ├── gb_churn_model.joblib      # Gradient Boosting 모델
-│   ├── rf_churn_model.joblib      # Random Forest 모델
-│   ├── lr_churn_model.joblib      # Logistic Regression 베이스라인
-│   └── voting_churn_model.joblib  # 보팅 앙상블 모델
-└── registered_faces/              # 등록된 얼굴 이미지 저장 폴더 (자동 생성)
+│   ├── db.py                   # MySQL 데이터베이스 연결 관리
+│   ├── face_auth.py            # InsightFace 기반 얼굴 인식/인증
+│   ├── churn_service.py        # 예측 모델 로딩 및 추론 서비스
+│   ├── telecom_churn_service.py# 통신사별 이탈 예측 로직
+│   └── ui.py                   # 세션 상태 관리 및 UI 유틸리티
+│
+├── view/                       # 화면 단위 UI 컴포넌트
+│   ├── login.py                # 로그인 화면
+│   ├── register.py             # 회원 등록 및 얼굴 데이터 저장
+│   └── tab_telecom_churn.py    # 이탈 예측 대시보드 탭
+│
+├── data/                       # 데이터셋 및 분석 환경
+│   ├── data.md                 # 데이터셋 기술 문서
+│   ├── churn_modeling.ipynb    # 이탈 예측 모델링 실습
+│   ├── dataset.ipynb           # 데이터 탐색 및 전처리
+│   ├── dataset_setting_model.ipynb
+│   ├── model.ipynb             # 모델 성능 실험 기록
+│   └── preprocess.ipynb        # 데이터 전처리 파이프라인
+│
+├── models/                     # 학습된 모델 아티팩트
+│   ├── churn_model.joblib      # 베이스 모델
+│   ├── lgb_churn_model.joblib  # LightGBM 단일 모델
+│   ├── lgb_full_pipeline.joblib# 파이프라인 통합 모델
+│   ├── xgb_churn_model.joblib  # XGBoost 단일 모델
+│   ├── xgb_model.joblib        # XGBoost 보조 모델
+│   ├── xgb_pipeline.joblib     # XGBoost 파이프라인
+│   ├── xgb_full_pipeline.joblib
+│   ├── gb_churn_model.joblib   # Gradient Boosting 모델
+│   ├── gb_full_pipeline.joblib
+│   ├── rf_churn_model.joblib   # Random Forest 모델
+│   ├── lr_churn_model.joblib   # Logistic Regression 모델
+│   ├── lr_full_pipeline.joblib
+│   ├── next_label_encoder.joblib # 라벨 인코더
+│   ├── next_lgb_churn_model.joblib # 다중 분류용 LGBM 모델
+│   └── voting_churn_model.joblib # 앙상블 보팅 모델
+│
+└── registered_faces/           # 얼굴 인식용 이미지 저장소
 ```
 
 ## 기술 스택
