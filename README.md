@@ -195,17 +195,20 @@ SKN32-2nd-1Team/
   - 앙상블 구성 시 LightGBM과 결합되는 보조 모델
 
 #### 2. 전처리 파이프라인 모델 (Pipeline Model)
-
+  - lgb_full_pipeline.joblib (메인 운영 모델)
+  - xgb_full_pipeline.joblib
+  - gb_full_pipeline.joblib
+  - lr_full_pipeline.joblib
 
 #### 3. 최종 채택 모델 (Final Ensemble)
-
-
+  - voting_churn_model.joblib: 여러 모델의 결과를 결합한 앙상블 모델 (성능 최적화)
+  - next_lgb_churn_model.joblib: 이탈 유형을 3개 클래스로 세분화한 다중 분류 모델 (타겟 마케팅용)
 
 ## 설치 및 실행
 
 ### 요구 사항
 
-- Python 3.10 이상
+- Python 3.11 이상
 - MySQL 서버
 - pip
 
@@ -287,7 +290,7 @@ DEV_SKIP_LOGIN = False  # 발표/제출 전 권장 설정
 ## 향후 개선 계획
 
 - [ ] 자체 전처리 데이터 기반 모델로 교체
-- [ ] 로그인 화면과 예측 화면의 UI 디자인 통일
 - [ ] 모델 성능 지표(정확도, F1-score 등) 대시보드 표시
 - [ ] 배치 예측 기능 추가
 - [ ] 고객 위험도별 리텐션 전략 고도화
+
