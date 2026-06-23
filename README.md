@@ -47,51 +47,62 @@ Signal-T는 얼굴 인식 기반 로그인과 머신러닝 모델을 결합한 S
 
 ```text
 SKN32-2nd-1Team/
-├── app.py                      # [실행] Streamlit 메인 엔트리 포인트
-├── tab_telecom_churn.py        # 이탈 예측 UI 뷰 컴포넌트
-├── config.toml                 # Streamlit 테마 설정
-├── requirements.txt            # Python 의존성 목록
-├── README.md                   # 프로젝트 문서
+├── app.py                       # [실행] Streamlit 메인 엔트리 포인트
+├── churn_view.py                # 이탈 예측 UI 실험/보조 뷰
+├── config.toml                  # Streamlit 테마 설정
+├── requirements.txt             # Python 의존성 목록
+├── run.bat                      # Windows 실행 스크립트
+├── .gitignore                   # Git 제외 파일 설정
+├── .streamlit                   # Streamlit 설정 파일
+├── README.md                    # 프로젝트 문서
 │
-├── app/                        # [비즈니스 로직]
+├── app/                         # [비즈니스 로직]
 │   ├── __init__.py
-│   ├── db.py                   # MySQL 데이터베이스 연결 관리
-│   ├── face_auth.py            # InsightFace 기반 얼굴 인식/인증
-│   ├── churn_service.py        # 예측 모델 로딩 및 추론 서비스
-│   ├── telecom_churn_service.py# 통신사별 이탈 예측 로직
-│   └── ui.py                   # 세션 상태 관리 및 UI 유틸리티
+│   ├── churn_service.py         # 예측 모델 로딩 및 추론 서비스
+│   ├── db.py                    # MySQL 데이터베이스 연결 관리
+│   ├── face_auth.py             # InsightFace 기반 얼굴 인식/인증
+│   ├── next_provider_service.py # 다음 통신사 예측 모델 로딩 및 추론
+│   ├── telecom_churn_service.py # 통신사 이탈 예측 로직
+│   └── ui.py                    # 세션 상태 관리 및 UI 유틸리티
 │
-├── view/                       # [UI 컴포넌트]
-│   ├── login.py                # 로그인 화면
-│   ├── register.py             # 회원 등록 및 얼굴 데이터 저장
-│   └── tab_telecom_churn.py    # 이탈 예측 대시보드 탭
+├── view/                        # [UI 컴포넌트]
+│   ├── login.py                 # 로그인 화면
+│   ├── register.py              # 회원 등록 및 얼굴 데이터 저장
+│   ├── tab_telecom_churn.py     # 통신사 이탈 예측 대시보드 탭
+│   └── telecom_predict.py       # 다음 통신사 예측 화면
 │
-├── data/                       # [데이터 분석]
-│   ├── data.md                 # 데이터셋 기술 문서
-│   ├── churn_modeling.ipynb    # 이탈 예측 모델링 실습
-│   ├── dataset.ipynb           # 데이터 탐색 및 전처리
+├── data/                        # [데이터 분석]
+│   ├── data.md                  # 데이터셋 기술 문서
+│   ├── churn_modeling.ipynb     # 이탈 예측 모델링 노트북
+│   ├── churn_modeling.py        # 이탈 예측 모델링 스크립트
+│   ├── dataset.ipynb            # 데이터 탐색 및 전처리
 │   ├── dataset_setting_model.ipynb
-│   ├── model.ipynb             # 모델 성능 실험 기록
-│   └── preprocess.ipynb        # 데이터 전처리 파이프라인
+│   ├── model.ipynb              # 모델 성능 실험 기록
+│   ├── next_churn_v3.ipynb      # 다음 통신사 예측 모델링 노트북
+│   ├── next_churn_v3.py         # 다음 통신사 예측 모델링 스크립트
+│   ├── next_xgb_churn_v3.ipynb  # 다음 통신사 XGBoost 실험 노트북
+│   └── preprocess.ipynb         # 데이터 전처리 파이프라인
 │
-├── models/                     # [모델 아티팩트]
-│   ├── churn_model.joblib      # 베이스 모델
-│   ├── lgb_churn_model.joblib  # LightGBM 단일 모델
-│   ├── lgb_full_pipeline.joblib# 파이프라인 통합 모델 (Production)
-│   ├── xgb_churn_model.joblib  # XGBoost 단일 모델
-│   ├── xgb_model.joblib        # XGBoost 보조 모델
-│   ├── xgb_pipeline.joblib     # XGBoost 파이프라인
-│   ├── xgb_full_pipeline.joblib
-│   ├── gb_churn_model.joblib   # Gradient Boosting 모델
-│   ├── gb_full_pipeline.joblib
-│   ├── rf_churn_model.joblib   # Random Forest 모델
-│   ├── lr_churn_model.joblib   # Logistic Regression 모델
-│   ├── lr_full_pipeline.joblib
-│   ├── next_label_encoder.joblib # 라벨 인코더
-│   ├── next_lgb_churn_model.joblib # 다중 분류용 LGBM 모델
-│   └── voting_churn_model.joblib # 앙상블 보팅 모델
+├── models/                      # [모델 아티팩트]
+│   ├── churn_model.joblib       # 베이스 모델
+│   ├── gb_churn_model.joblib    # Gradient Boosting 단일 모델
+│   ├── gb_full_pipeline.joblib  # Gradient Boosting 파이프라인
+│   ├── lgb_churn_model.joblib   # LightGBM 단일 모델
+│   ├── lgb_full_pipeline.joblib # LightGBM 파이프라인 통합 모델
+│   ├── lr_churn_model.joblib    # Logistic Regression 모델
+│   ├── lr_full_pipeline.joblib  # Logistic Regression 파이프라인
+│   ├── next_label_encoder.joblib # 다음 통신사 라벨 인코더
+│   ├── next_lgb_churn_model.joblib # 다음 통신사 LGBM 다중 분류 모델
+│   ├── next_xgb_churn_v3.joblib # 다음 통신사 XGBoost 모델
+│   ├── rf_churn_model.joblib    # Random Forest 모델
+│   ├── rf_full_pipeline.joblib  # Random Forest 파이프라인
+│   ├── voting_churn_model.joblib # 앙상블 보팅 모델
+│   ├── xgb_churn_model.joblib   # XGBoost 단일 모델
+│   ├── xgb_model.joblib         # XGBoost 보조 모델
+│   ├── xgb_pipeline.joblib      # XGBoost 파이프라인
+│   └── xgb_full_pipeline.joblib # XGBoost 전체 파이프라인
 │
-└── registered_faces/           # 얼굴 인식용 이미지 저장소
+└── registered_faces/            # 얼굴 인식용 이미지 저장소
 ```
 
 ## 기술 스택
