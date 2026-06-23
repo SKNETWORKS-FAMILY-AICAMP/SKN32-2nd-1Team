@@ -9,12 +9,20 @@ Signal-T는 얼굴 인식 기반 로그인과 머신러닝 모델을 결합한 S
 - [팀 소개](#팀-소개)
 - [WBS](#wbs)
 - [프로젝트 개요](#프로젝트-개요)
-- [주요 기능](#주요-기능)
-- [기술 스택](#기술-스택)
-- [데이터 전처리 결과서](#데이터-전처리-결과서)
-- [학습된 인공지능 모델](#학습된-인공지능-모델)
 - [프로젝트 구조](#프로젝트-구조)
+- [기술 스택](#기술-스택)
+  - [주요 Python 패키지](#주요-python-패키지)
+- [EDA](#eda)
+- [주요 기능](#주요-기능)
+- [데이터 전처리 결과서](#데이터-전처리-결과서)
+  - [전처리 결과](#전처리-결과)
+  - [모델링 실험 결과](#모델링-실험-결과)
+- [학습된 인공지능 모델](#학습된-인공지능-모델)
+  - [모델 아티팩트 목록](#모델-아티팩트-목록)
+  - [이탈 예측 모델 구조](#이탈-예측-모델-구조)
+  - [다음 통신사 예측 모델 구조](#다음-통신사-예측-모델-구조)
 - [설치 및 실행](#설치-및-실행)
+- [개발 모드](#개발-모드)
 - [사용 방법](#사용-방법)
 - [모델 교체 방법](#모델-교체-방법)
 - [향후 개선 계획](#향후-개선-계획)
@@ -298,39 +306,74 @@ SKN32-2nd-1Team/
 
 ## 학습된 인공지능 모델
 
-학습 결과로 생성된 모델 아티팩트는 `models/` 디렉터리에 저장되어 있으며, 용도와 구성 방식에 따라 다음과 같이 분류됩니다.
+학습 결과로 생성된 모델 아티팩트는 `models/` 디렉터리에 저장되어 있습니다. 본 프로젝트는 고객의 **이탈 여부/확률을 예측하는 모델**과, 통신사를 변경한다고 가정했을 때 **다음 이동 통신사 후보를 예측하는 모델**을 분리하여 사용합니다.
 
 ### 모델 아티팩트 목록
 
 | 구분 | 파일명 | 알고리즘 | 용도 |
 | :--- | :--- | :--- | :--- |
-| 베이스 모델 | '' |  |  |
-| 보조 모델 | `` |  |  |
-| 파이프라인 | `` |     |  |
+| 이탈 예측 파이프라인 | `xgb_full_pipeline.joblib` | XGBoost + sklearn Pipeline | 고객 이탈 확률 예측 |
+| 이탈 예측 파이프라인 | `lgb_full_pipeline.joblib` | LightGBM + sklearn Pipeline | LightGBM 기반 이탈 확률 예측 |
+| 이탈 예측 파이프라인 | `gb_full_pipeline.joblib` | Gradient Boosting + sklearn Pipeline | 비교 실험용 이탈 예측 |
+| 이탈 예측 파이프라인 | `rf_full_pipeline.joblib` | Random Forest + sklearn Pipeline | 비교 실험용 이탈 예측 |
+| 이탈 예측 파이프라인 | `lr_full_pipeline.joblib` | Logistic Regression + sklearn Pipeline | 베이스라인 비교 |
+| 단일 모델 | `churn_model.joblib` | LightGBM | 전처리 완료 데이터 기준 단일 이탈 예측 모델 |
+| 단일 모델 | `xgb_model.joblib` | XGBoost | XGBoost 보조 모델 |
+| 단일 모델 | `lgb_churn_model.joblib` | LightGBM | LightGBM 단일 모델 |
+| 단일 모델 | `xgb_churn_model.joblib` | XGBoost | XGBoost 단일 모델 |
+| 단일 모델 | `gb_churn_model.joblib` | Gradient Boosting | Gradient Boosting 단일 모델 |
+| 단일 모델 | `rf_churn_model.joblib` | Random Forest | Random Forest 단일 모델 |
+| 단일 모델 | `lr_churn_model.joblib` | Logistic Regression | Logistic Regression 단일 모델 |
+| 앙상블 모델 | `voting_churn_model.joblib` | Voting Ensemble | 여러 모델 결과를 결합한 최종 앙상블 |
+| 다음 통신사 예측 | `next_xgb_churn_v3.joblib` | XGBoost Multi-class | SKT/KT/LG U+ 이동 확률 예측 |
+| 다음 통신사 예측 | `next_lgb_churn_model.joblib` | LightGBM Multi-class | 다음 통신사 예측 보조 모델 |
+| 인코더 | `next_label_encoder.joblib` | LabelEncoder | 다음 통신사 클래스 라벨 복원 |
 
-### 카테고리별 분류
+### 이탈 예측 모델 구조
 
-#### 1. 단일 학습 모델 (Single Model)
+`xgb_full_pipeline.joblib`은 sklearn Pipeline 기반의 3단계 구조입니다. 원본 입력 13개 컬럼을 받아 파생변수 생성, 전처리, XGBoost 이진분류 모델을 순서대로 통과시킨 뒤 이탈 확률을 반환합니다.
 
-- **`churn_model.joblib`**
-  - LightGBM 단일 모델
-  - 실험 004 ~ 009 구간에서 도출된 핵심 모델
-  - 빠른 추론과 가벼운 배포가 필요한 경우 사용
+![xgb_full_pipeline 모델 구조](산출물/xgb_full_pipeline_structure.png)
 
-- **`xgb_model.joblib`**
-  - XGBoost 단일 모델
-  - 실험 010에서 도출 (XGB 기준 ROC-AUC 0.6583)
-  - 앙상블 구성 시 LightGBM과 결합되는 보조 모델
+| 단계 | 구성 | 처리 내용 | 출력 |
+| :--- | :--- | :--- | :--- |
+| 원본 입력 | 13개 컬럼 | `age`, `gender`, `income`, `school`, `job`, `marriage`, `provider`, `monthly_total_cost` 등 입력 | 원본 feature |
+| 1. Feature Engineering | 커스텀 `FeatureEngineer` | 비율, 로그, 전년 대비 변화율, 3개월 이동평균/표준편차 등 파생변수 생성 | 49개 feature |
+| 2. Preprocessing | `ColumnTransformer` | 수치형 32개 컬럼은 중앙값 대체 후 StandardScaler 적용, 범주형 15개 컬럼은 최빈값 대체 후 One-hot 인코딩 적용 | 78차원 벡터 |
+| 3. Model | `XGBClassifier` | `binary:logistic` 목적함수 기반 이진분류 수행 | 이탈 확률 |
 
-#### 2. 전처리 파이프라인 모델 (Pipeline Model)
-  - lgb_full_pipeline.joblib (메인 운영 모델)
-  - xgb_full_pipeline.joblib
-  - gb_full_pipeline.joblib
-  - lr_full_pipeline.joblib
+주요 하이퍼파라미터는 `n_estimators=1000`, `max_depth=4`, `learning_rate=0.03`, `subsample=0.8`, `colsample_bytree=0.8`, `min_child_weight=10`, `reg_alpha=1`, `reg_lambda=2`, `eval_metric=auc`입니다. 클래스는 `[0, 1]`이며 `0`은 유지, `1`은 이탈을 의미합니다.
 
-#### 3. 최종 채택 모델 (Final Ensemble)
-  - voting_churn_model.joblib: 여러 모델의 결과를 결합한 앙상블 모델 (성능 최적화)
-  - next_lgb_churn_model.joblib: 이탈 유형을 3개 클래스로 세분화한 다중 분류 모델 (타겟 마케팅용)
+```text
+원본 입력 13개 컬럼
+  -> FeatureEngineer: 13개 컬럼을 49개 feature로 확장
+  -> ColumnTransformer: 수치형/범주형 전처리 후 78차원 벡터 생성
+  -> XGBClassifier: 이탈 여부 이진분류
+  -> 이탈 확률(0.0 ~ 1.0)
+```
+
+### 다음 통신사 예측 모델 구조
+
+`next_xgb_churn_v3.joblib`은 사용자가 통신사를 변경한다고 가정했을 때 SKT, KT, LG U+ 중 어느 통신사로 이동할 가능성이 높은지 예측하는 다중분류 모델입니다. 이 모델은 이탈 여부를 판단하는 모델이 아니라, 이동 후보 통신사별 확률을 계산하는 보조 분석 모델입니다.
+
+![다음 통신사 예측 모델 구조](산출물/next_provider_model_structure.png)
+
+| 입력 구분 | 개수 | 내용 |
+| :--- | :--- | :--- |
+| 사용자 입력 | 9개 | `age`, `income`, `provider`, `tenure`, `monthly_total_cost` 등 |
+| 계산값 | 1개 | `cost_change_rate` |
+| 고정값 | 7개 | `area`, `gender`, `job`, `marriage` 등 최빈값 기반 고정 입력 |
+| 최종 입력 | 17개 | 사용자 입력, 계산값, 고정값을 결합한 feature 벡터 |
+
+모델은 `XGBClassifier`의 다중분류 설정을 사용하며, `objective=multi:softprob`, `max_depth=5`, `learning_rate=0.05`, 조기종료 396라운드 기준으로 학습되었습니다. 클래스는 `[0, 1, 2]`이며 각각 SKT, KT, LG U+ 이동 확률에 대응합니다.
+
+```text
+사용자 입력 9개 + 계산값 1개 + 고정값 7개
+  -> 17개 feature 벡터
+  -> XGBClassifier 다중분류(multi:softprob)
+  -> SKT / KT / LG U+ 이동 확률
+  -> 현재 가입사는 0%로 강제 처리하고 나머지 통신사 확률을 카드 UI에 표시
+```
 
 ## 설치 및 실행
 
