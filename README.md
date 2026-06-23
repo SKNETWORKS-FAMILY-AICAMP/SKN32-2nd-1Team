@@ -315,7 +315,7 @@ SKN32-2nd-1Team/
 
 `xgb_full_pipeline.joblib`은 sklearn Pipeline 기반의 3단계 구조입니다. 원본 입력 13개 컬럼을 받아 파생변수 생성, 전처리, XGBoost 이진분류 모델을 순서대로 통과시킨 뒤 이탈 확률을 반환합니다.
 
-![xgb_full_pipeline 모델 구조](산출물/xgb_full_pipeline_structure.png)
+<img src="path/to/your/image_0.png" width="300px" height="200px" alt="다중분류 예측 프로세스">
 
 | 단계 | 구성 | 처리 내용 | 출력 |
 | :--- | :--- | :--- | :--- |
@@ -338,7 +338,7 @@ SKN32-2nd-1Team/
 
 `next_xgb_churn_v3.joblib`은 사용자가 통신사를 변경한다고 가정했을 때 SKT, KT, LG U+ 중 어느 통신사로 이동할 가능성이 높은지 예측하는 다중분류 모델입니다. 이 모델은 이탈 여부를 판단하는 모델이 아니라, 이동 후보 통신사별 확률을 계산하는 보조 분석 모델입니다.
 
-![다음 통신사 예측 모델 구조](산출물/next_provider_model_structure.png)
+<img src="path/to/your/image_1.png" width="300px" alt="이진분류 파이프라인">
 
 | 입력 구분 | 개수 | 내용 |
 | :--- | :--- | :--- |
