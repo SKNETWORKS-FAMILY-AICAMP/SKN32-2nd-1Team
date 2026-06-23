@@ -81,7 +81,7 @@ _MODELS_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "models",
 )
-_MODEL_PATH = os.path.join(_MODELS_DIR, "next_lgb_churn_model.joblib")
+_MODEL_PATH = os.path.join(_MODELS_DIR, "next_xgb_churn_v3.joblib")
 _ENCODER_PATH = os.path.join(_MODELS_DIR, "next_label_encoder.joblib")
 
 _model = None
@@ -139,7 +139,11 @@ def predict_next_provider(input_values: dict) -> dict:
 
     df = pd.DataFrame([row], columns=NEXT_PROVIDER_FEATURE_ORDER)
 
-    proba = model.predict(df)[0]
+    # ⚠️ next_xgb_churn_v3.joblib(XGBClassifier)는 model.predict()가
+    # 확률이 아니라 예측 클래스 번호 하나만 반환합니다. 클래스별 확률은
+    # predict_proba()로 받아야 합니다. (이전 LightGBM 모델은 predict()가
+    # 바로 확률 배열을 반환했어서 차이가 있습니다.)
+    proba = model.predict_proba(df)[0]
     target_names = [PROVIDER_MAP[int(c)] for c in le.classes_]
 
     result = {name: float(p) for name, p in zip(target_names, proba)}
