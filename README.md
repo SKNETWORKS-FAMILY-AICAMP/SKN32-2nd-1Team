@@ -44,14 +44,19 @@ Signal-T는 얼굴 인식 기반 로그인과 머신러닝 모델을 결합한 S
 ## 프로젝트 구조
 
 '''text
-telecom-churn-project/
-├── app.py                      # 메인 실행 파일 (Streamlit 진입점)
+## 프로젝트 구조
+
+본 프로젝트는 서비스 실행부, 핵심 비즈니스 로직, UI 컴포넌트, 그리고 데이터 분석 및 모델 아티팩트로 체계적으로 구분되어 있습니다.
+
+```text
+SKN32-2nd-1Team/
+├── app.py                      # [실행] Streamlit 메인 엔트리 포인트
 ├── tab_telecom_churn.py        # 이탈 예측 UI 뷰 컴포넌트
 ├── config.toml                 # Streamlit 테마 설정
 ├── requirements.txt            # Python 의존성 목록
-├── README.md                   # 프로젝트 설명 및 실행 가이드
+├── README.md                   # 프로젝트 문서
 │
-├── app/                        # 핵심 비즈니스 로직
+├── app/                        # [비즈니스 로직]
 │   ├── __init__.py
 │   ├── db.py                   # MySQL 데이터베이스 연결 관리
 │   ├── face_auth.py            # InsightFace 기반 얼굴 인식/인증
@@ -59,12 +64,12 @@ telecom-churn-project/
 │   ├── telecom_churn_service.py# 통신사별 이탈 예측 로직
 │   └── ui.py                   # 세션 상태 관리 및 UI 유틸리티
 │
-├── view/                       # 화면 단위 UI 컴포넌트
+├── view/                       # [UI 컴포넌트]
 │   ├── login.py                # 로그인 화면
 │   ├── register.py             # 회원 등록 및 얼굴 데이터 저장
 │   └── tab_telecom_churn.py    # 이탈 예측 대시보드 탭
 │
-├── data/                       # 데이터셋 및 분석 환경
+├── data/                       # [데이터 분석]
 │   ├── data.md                 # 데이터셋 기술 문서
 │   ├── churn_modeling.ipynb    # 이탈 예측 모델링 실습
 │   ├── dataset.ipynb           # 데이터 탐색 및 전처리
@@ -72,10 +77,10 @@ telecom-churn-project/
 │   ├── model.ipynb             # 모델 성능 실험 기록
 │   └── preprocess.ipynb        # 데이터 전처리 파이프라인
 │
-├── models/                     # 학습된 모델 아티팩트
+├── models/                     # [모델 아티팩트]
 │   ├── churn_model.joblib      # 베이스 모델
 │   ├── lgb_churn_model.joblib  # LightGBM 단일 모델
-│   ├── lgb_full_pipeline.joblib# 파이프라인 통합 모델
+│   ├── lgb_full_pipeline.joblib# 파이프라인 통합 모델 (Production)
 │   ├── xgb_churn_model.joblib  # XGBoost 단일 모델
 │   ├── xgb_model.joblib        # XGBoost 보조 모델
 │   ├── xgb_pipeline.joblib     # XGBoost 파이프라인
